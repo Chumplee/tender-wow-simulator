@@ -69,6 +69,18 @@ var next_flash := 0.0
 var last_click := 0.0
 var click_player: AudioStreamPlayer
 var cur_head_off := Vector2.ZERO
+var blinds_anim := 1.0 # 0 = raised, 1 = fully closed; starts in cave mode
+var snack_t0 := -10.0
+var poke_t0 := -10.0
+var sob_player: AudioStreamPlayer
+var cry_t0 := -10.0
+var dmg_numbers: Array = []
+var next_dmg := 0.0
+var bracket_pos := Vector2(250, 520)
+var bracket_until := 0.0
+var cast_f := 0.0
+var big_label: Label
+var last_mood := ""
 var ui: CanvasLayer
 var hud_label: Label
 var log_label: Label
@@ -105,6 +117,18 @@ const CRY_LINES := [
 	"my rotation... it never got to finish...",
 	"tell my guild i lagged out a hero.",
 	"i can see my own room. i hate it here.",
+]
+const SCREAM_LINES := [
+	"AAAAAARGH!!",
+	"MY PING!! MY BEAUTIFUL PING!!",
+	"SEVEN KINGDOMS WILL HEAR OF THIS!!",
+	"THAT WAS A PERFECT PULL!!",
+]
+const WAIL_LINES := [
+	"WAAAAAAH!!",
+	"IT'S ALL GONE!!",
+	"NOT THE RAID... NOT LIKE THIS...",
+	"WHY WOULD YOU DO THIS TO ME!!",
 ]
 const POKE_LINES := [
 	"hm? oh. it's you. the cursor of god.",
@@ -187,12 +211,17 @@ func _build_audio() -> void:
 	click_player = AudioStreamPlayer.new()
 	click_player.volume_db = -17.0
 	add_child(click_player)
-	for n in ["theme", "click", "rage", "powerdown", "powerup", "snack", "hiss"]:
+	sob_player = AudioStreamPlayer.new()
+	sob_player.volume_db = -13.0
+	add_child(sob_player)
+	for n in ["theme", "click", "rage", "powerdown", "powerup", "snack", "hiss", "sob"]:
 		var s = load("res://assets/audio/%s.wav" % n)
 		if s:
 			streams[n] = s
 	if streams.has("click"):
 		click_player.stream = streams["click"]
+	if streams.has("sob"):
+		sob_player.stream = streams["sob"]
 	if streams.has("theme"):
 		music_player.stream = streams["theme"]
 		music_player.finished.connect(func() -> void:
@@ -301,6 +330,12 @@ func _build_ui() -> void:
 	bubble_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	bubble_label.visible = false
 	ui.add_child(bubble_label)
+
+	# the big feelings label: screams and wails, worn proudly above everything
+	big_label = make_label("", 170, 50, 540, 46, 20, Color(1.0, 0.35, 0.2), HORIZONTAL_ALIGNMENT_CENTER)
+	big_label.visible = false
+	big_label.set_pivot_offset(Vector2(270, 23))
+	ui.add_child(big_label)
 
 	# patch-notes ticker (bottom bezel)
 	var bar := ColorRect.new()
@@ -453,6 +488,7 @@ func give_snack() -> void:
 		return
 	snacks += 1
 	trash += 1
+	snack_t0 = t
 	play_sfx("snack")
 	show_bubble(SNACK_LINES[randi() % SNACK_LINES.size()], 2.8)
 	if snacks % 5 == 0:
@@ -488,6 +524,7 @@ func poke() -> void:
 	if not started:
 		return
 	play_sfx("click")
+	poke_t0 = t
 	show_bubble(POKE_LINES[randi() % POKE_LINES.size()], 3.0)
 
 func poke_monitor() -> void:
@@ -605,6 +642,53 @@ func _process(delta: float) -> void:
 				click_player.play()
 	flashes = flashes.filter(func(f) -> bool: return t < float(f["until"]))
 
+	# blinds ease toward their state (and slam shut when he hisses)
+	var b_target := 0.0 if blinds_open else 1.0
+	blinds_anim = move_toward(blinds_anim, b_target, delta * (4.0 if mood == "hiss" else 1.6))
+
+	# the sob track runs only while he grieves in the dark
+	if sob_player and sob_player.stream:
+		if mood == "cry" and not muted:
+			if not sob_player.playing:
+				sob_player.play()
+		elif sob_player.playing:
+			sob_player.stop()
+
+	# big feelings: screams, wails, and one startled beat
+	if mood != last_mood:
+		if mood == "rage":
+			big_label.text = SCREAM_LINES[randi() % SCREAM_LINES.size()]
+			big_label.add_theme_color_override("font_color", Color(1.0, 0.35, 0.2))
+			big_label.visible = true
+		elif mood == "cry":
+			cry_t0 = t
+			big_label.text = WAIL_LINES[randi() % WAIL_LINES.size()]
+			big_label.add_theme_color_override("font_color", Color(0.55, 0.8, 1.0))
+			big_label.visible = true
+		elif mood == "shock":
+			big_label.text = "!!"
+			big_label.add_theme_color_override("font_color", Color(1.0, 0.95, 0.4))
+			big_label.visible = true
+		else:
+			big_label.visible = false
+		last_mood = mood
+	if big_label.visible:
+		var pulse := 26.0 if mood == "rage" else 7.0
+		big_label.scale = Vector2.ONE * (1.0 + 0.07 * sin(t * pulse))
+		big_label.rotation = 0.03 * sin(t * 2.0) if mood == "cry" else 0.0
+
+	# damage numbers and target practice on his screen
+	if started and power_on and wifi_on:
+		cast_f = fmod(cast_f + delta / 2.6, 1.0)
+		if t > next_dmg:
+			next_dmg = t + (randf_range(0.25, 0.6) if surge_now else randf_range(0.5, 1.4))
+			var crit := randf() < 0.18
+			dmg_numbers.append({"pos": Vector2(randf_range(190.0, 390.0), randf_range(500.0, 590.0)), "text": ("CRIT %d" % randi_range(4000, 9999)) if crit else str(randi_range(300, 3900)), "born": t, "color": Color(1.0, 0.55, 0.2) if crit else Color(1.0, 0.95, 0.75)})
+		if t > bracket_until:
+			bracket_until = t + randf_range(1.2, 2.2)
+			bracket_pos = Vector2(randf_range(190.0, 400.0), randf_range(490.0, 590.0))
+	dmg_numbers = dmg_numbers.filter(func(d) -> bool: return t - float(d["born"]) < 0.9)
+
 	# ticker scroll
 	var nx := ticker_label.position.x - delta * 55.0
 	if nx < -ticker_width:
@@ -684,6 +768,26 @@ func _draw() -> void:
 	if not started:
 		rect(0, 0, W, H, Color(0.01, 0.01, 0.04, 0.80))
 		return
+	# ---- the blinds live again: a sunbeam when they are up, slats that slide over the art's window ----
+	if blinds_anim < 0.35 and power_on and phase < 0.70:
+		var beam_a := 0.055 * (1.0 - blinds_anim / 0.35)
+		if mood == "hiss":
+			beam_a = 0.13
+		draw_colored_polygon(PackedVector2Array([Vector2(312, 236), Vector2(568, 236), Vector2(770, 480), Vector2(430, 480)]), Color(1.0, 0.95, 0.75, beam_a))
+	if blinds_anim > 0.01:
+		var covered := 148.0 * blinds_anim
+		var yy := 88.0
+		while yy < 88.0 + covered:
+			rect(299, yy, 278, 8, Color("#ccd5da"))
+			rect(299, yy + 8, 278, 2, Color(0, 0, 0, 0.18))
+			yy += 11.0
+		rect(299, 88, 4, covered, Color(0, 0, 0, 0.20))
+		rect(573, 88, 4, covered, Color(0, 0, 0, 0.20))
+	# a grief puddle gathers on the desk while he cries
+	if mood == "cry" and cry_t0 > 0.0:
+		var pw := minf(30.0 + (t - cry_t0) * 6.0, 95.0)
+		draw_colored_polygon(ellipse_pts(Vector2(763 + cur_head_off.x, 608), pw, pw * 0.16), Color(0.45, 0.72, 1.0, 0.45))
+
 	# ---- he is actually gaming now: slices of the same art, shifted a few pixels ----
 	var surge := power_on and wifi_on and mood == "focused" and t < surge_until
 	cur_head_off = Vector2(sin(t * 0.9) * 1.2, sin(t * 1.3) * 1.5)
@@ -705,7 +809,59 @@ func _draw() -> void:
 		if surge:
 			m_off.x += sin(t * 13.0) * 1.0
 		draw_texture_rect_region(scene_tex, Rect2(MS_SRC.position + m_off, MS_SRC.size), MS_SRC)
-		draw_texture_rect_region(scene_tex, Rect2(HEAD_SRC.position + cur_head_off, HEAD_SRC.size), HEAD_SRC)
+		# mood moves the head: rage shakes and swells, shock startles, grief heaves, a poke flinches
+		var h_scale := 1.0
+		var h_squash := 1.0
+		if mood == "rage":
+			h_scale = 1.0 + 0.045 * sin(t * 24.0)
+			cur_head_off.x += (sin(t * 47.0) + sin(t * 31.0)) * 1.6
+			cur_head_off.y += sin(t * 39.0) * 1.2
+		elif mood == "shock":
+			h_scale = 1.10
+			for si in range(8):
+				var ang := float(si) * PI / 4.0 + 0.4
+				var c0 := Vector2(763, 190) + cur_head_off + Vector2(cos(ang), sin(ang)) * 185.0
+				line(c0, c0 + Vector2(cos(ang), sin(ang)) * 26.0, Color(1, 1, 1, 0.7), 3)
+		elif mood == "cry":
+			var sob := pow(maxf(0.0, sin(t * 7.5)), 3.0)
+			h_squash = 1.0 - 0.035 * sob
+			cur_head_off.x += sin(t * 1.1) * 3.0
+			cur_head_off.y += 5.0 + sob * 2.0
+		elif mood == "hiss":
+			cur_head_off.x += sin(t * 40.0) * 1.5
+			cur_head_off.y += 3.0
+		if poke_t0 > 0.0 and t - poke_t0 < 0.35:
+			cur_head_off += Vector2(-1, 1) * sin((t - poke_t0) / 0.35 * PI) * 6.0
+		if snack_t0 > 0.0 and t - snack_t0 >= 0.45 and t - snack_t0 < 1.1:
+			cur_head_off.y += absf(sin(t * 22.0)) * 2.0 # chewing
+		var hs := HEAD_SRC.size * Vector2(h_scale, h_scale * h_squash)
+		var hpos := Vector2(HEAD_SRC.get_center().x - hs.x / 2.0, HEAD_SRC.position.y + HEAD_SRC.size.y - hs.y) + cur_head_off
+		draw_texture_rect_region(scene_tex, Rect2(hpos, hs), HEAD_SRC)
+		# the flying snack: tossed in, caught in the beard, chewed, dropped as trash
+		if snack_t0 > 0.0:
+			var sa := t - snack_t0
+			if sa < 1.3:
+				var mouth := Vector2(770, 300) + cur_head_off
+				var can_pos := mouth
+				var can_rot := 0.0
+				var can_a := 1.0
+				if sa < 0.45:
+					var ff := sa / 0.45
+					can_pos = Vector2(lerpf(1010.0, mouth.x, ff), lerpf(650.0, mouth.y, ff) - sin(ff * PI) * 120.0)
+					can_rot = ff * 9.0
+				elif sa < 1.1:
+					can_pos = mouth + Vector2(6, 10)
+					can_rot = 0.6
+				else:
+					var f2 := (sa - 1.1) / 0.2
+					can_pos = Vector2(lerpf(mouth.x, 905.0, f2), lerpf(mouth.y, 605.0, f2 * f2))
+					can_rot = 2.2
+					can_a = 1.0 - f2
+				draw_set_transform(can_pos, can_rot, Vector2.ONE)
+				rect(-8, -13, 16, 26, Color(0.75, 0.78, 0.82, can_a))
+				rect(-8, -4, 16, 7, Color(0.85, 0.25, 0.2, can_a))
+				rect(-8, -13, 16, 3, Color(0.55, 0.58, 0.62, can_a))
+				draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		if power_on and wifi_on:
 			rect(202.0 + 198.0 * boss_hp, 447, 198.0 * (1.0 - boss_hp), 9, Color(0.05, 0.02, 0.02, 0.60))
 			for f in flashes:
@@ -713,6 +869,21 @@ func _draw() -> void:
 				var fc: Color = f["color"]
 				var fa: float = 0.16 * clampf((float(f["until"]) - t) / 0.28, 0.0, 1.0)
 				circ(fp, 26, Color(fc, fa))
+			# damage numbers float up, a target bracket hops between victims, the cast bar fills
+			if pixel_font:
+				for d in dmg_numbers:
+					var age: float = t - float(d["born"])
+					var dp: Vector2 = d["pos"]
+					var dc: Color = d["color"]
+					var dt: String = d["text"]
+					draw_string(pixel_font, dp + Vector2(-30, -age * 26.0), dt, HORIZONTAL_ALIGNMENT_CENTER, 60, 8, Color(dc, clampf(1.0 - age / 0.9, 0.0, 1.0)))
+			var bc := Color(1.0, 0.85, 0.3, 0.85)
+			for sx in [-1.0, 1.0]:
+				for sy in [-1.0, 1.0]:
+					line(bracket_pos + Vector2(sx * 16, sy * 12), bracket_pos + Vector2(sx * 9, sy * 12), bc, 2)
+					line(bracket_pos + Vector2(sx * 16, sy * 12), bracket_pos + Vector2(sx * 16, sy * 5), bc, 2)
+			rect(190, 606, 220, 5, Color(0, 0, 0, 0.45))
+			rect(190, 606, 220 * cast_f, 5, Color(1.0, 0.8, 0.3, 0.8))
 	# night settles over the room
 	var nf := night_factor(phase)
 	if nf > 0.02 and power_on:
@@ -730,20 +901,21 @@ func _draw() -> void:
 			draw_string(pixel_font, Vector2(SCREEN_RECT.position.x, SCREEN_RECT.position.y + 165), "DISCONNECTED", HORIZONTAL_ALIGNMENT_CENTER, SCREEN_RECT.size.x, 11, C_RED)
 	# his face lives around (763, 205) in the art: a rage flush + steam off the halo
 	if mood == "rage":
-		circ(Vector2(763, 200) + cur_head_off, 150, Color(0.9, 0.25, 0.2, 0.10))
+		circ(Vector2(763, 200) + cur_head_off, 150, Color(0.9, 0.25, 0.2, 0.07))
 		for i in range(6):
 			var side := -1.0 if i % 2 == 0 else 1.0
 			var rise := fmod(t * 55.0 + i * 26.0, 84.0)
-			var alpha := 0.6 * (1.0 - rise / 84.0)
-			circ(Vector2(763 + side * (95 + (i % 3) * 16), 96 - rise) + cur_head_off, 9 + rise * 0.13, Color(0.92, 0.92, 0.94, alpha))
+			var alpha := 0.75 * (1.0 - rise / 84.0)
+			circ(Vector2(763 + side * (95 + (i % 3) * 16), 96 - rise) + cur_head_off, 13 + rise * 0.18, Color(0.92, 0.92, 0.94, alpha))
 	# tears for the meltdown, streaming from his eyes down into the beard
 	if mood == "cry":
 		for side in [-1.0, 1.0]:
 			var ex: float = 763.0 + side * 46.0 + cur_head_off.x
-			line(Vector2(ex, 216 + cur_head_off.y), Vector2(ex - side * 3.0, 300 + cur_head_off.y), Color(0.45, 0.75, 1.0, 0.55), 5)
+			line(Vector2(ex, 216 + cur_head_off.y), Vector2(ex - side * 3.0, 332 + cur_head_off.y), Color(0.45, 0.75, 1.0, 0.6), 9)
 			for k in range(3):
-				var fall := fmod(t * 150.0 + k * 40.0 + (24.0 if side > 0.0 else 0.0), 96.0)
-				circ(Vector2(ex, 222 + fall + cur_head_off.y), 4.5, Color(0.45, 0.75, 1.0, 0.9))
+				var fall := fmod(t * 190.0 + k * 44.0 + (24.0 if side > 0.0 else 0.0), 116.0)
+				circ(Vector2(ex, 222 + fall + cur_head_off.y), 6, Color(0.45, 0.75, 1.0, 0.95))
+			circ(Vector2(ex - side * 3.0, 338 + cur_head_off.y), 3.5 + sin(t * 9.0 + side) * 0.8, Color(0.45, 0.75, 1.0, 0.8))
 	if not power_on:
 		rect(0, 0, W, H, Color(0.02, 0.03, 0.10, 0.30))
 

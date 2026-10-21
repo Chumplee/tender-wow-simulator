@@ -40,5 +40,18 @@ func _init() -> void:
 	for k in range(8):
 		await wait_frames(7)
 		await snap(game, "anim_%02d" % k)
+	# blinds: opened (he hisses, slats up, sunbeam), then slammed back down
+	game.toggle_curtains()
+	await wait_frames(10)
+	await snap(game, "05_blinds_open_hiss")
+	game.toggle_curtains()
+	await wait_frames(22)
+	await snap(game, "06_blinds_slamming")
+	# the flying snack, mid-air and mid-chew
+	game.give_snack()
+	await wait_frames(14)
+	await snap(game, "07_snack_fly")
+	await wait_frames(30)
+	await snap(game, "08_snack_chew")
 	print("CAPTURE DONE")
 	quit(0)
