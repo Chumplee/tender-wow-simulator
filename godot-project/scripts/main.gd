@@ -53,6 +53,7 @@ var muted := false
 var log_lines: Array[String] = []
 var hair_curls: Array = []   # Vector3 offsets (x, y, r) around head centre
 var beard_curls: Array = []
+var beard_mass: Array = []   # solid beard silhouette blobs under the curls
 var stars: Array = []        # Vector2 in window space
 var trash_spots: Array = []  # precomputed Vector2 pile anchors
 
@@ -119,19 +120,34 @@ func _ready() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 1985
 	# hair halo: a glorious cloud of curls around the head
-	for i in range(46):
+	for i in range(78):
 		var a := rng.randf_range(-PI * 0.98, PI * 0.35)
-		var rad := rng.randf_range(52.0, 78.0)
-		hair_curls.append(Vector3(cos(a) * rad, sin(a) * rad * 0.92, rng.randf_range(15.0, 27.0)))
-	for i in range(16): # long side curtains of hair
+		var rad := rng.randf_range(58.0, 94.0)
+		hair_curls.append(Vector3(cos(a) * rad, sin(a) * rad * 0.92, rng.randf_range(16.0, 30.0)))
+	for i in range(20): # long side curtains of hair
 		var side := -1.0 if i % 2 == 0 else 1.0
 		var k := float(i / 2)
-		hair_curls.append(Vector3(side * rng.randf_range(58.0, 70.0), 6.0 + k * 13.0, rng.randf_range(14.0, 22.0)))
-	# beard mass: dense curls from cheeks down the chest
-	for i in range(52):
-		var yy := rng.randf_range(28.0, 168.0)
-		var spread := 56.0 - maxf(0.0, yy - 110.0) * 0.22
-		beard_curls.append(Vector3(rng.randf_range(-spread, spread), yy, rng.randf_range(11.0, 20.0)))
+		hair_curls.append(Vector3(side * rng.randf_range(64.0, 80.0), 6.0 + k * 15.0, rng.randf_range(15.0, 24.0)))
+	# solid beard silhouette: overlapping blobs, jaw to chest.
+	# U-rule: keep the middle of the face clear (nose, mouth, chin window);
+	# the beard wraps the jaw and hangs below it instead.
+	var beard_profile: Array = [[48, 58], [72, 64], [96, 68], [120, 68], [144, 62], [168, 52], [190, 40], [206, 26]]
+	for row in beard_profile:
+		var ry: float = row[0]
+		var hw: float = row[1]
+		var x := -hw
+		while x <= hw:
+			if absf(x) >= 40.0 or ry >= 76.0:
+				beard_mass.append(Vector3(x + rng.randf_range(-4.0, 4.0), ry + rng.randf_range(-4.0, 4.0), rng.randf_range(20.0, 27.0)))
+			x += 22.0
+	# beard texture: dense curls, same U-rule so his face survives
+	for i in range(110):
+		var yy := rng.randf_range(34.0, 205.0)
+		var spread := 68.0 - maxf(0.0, yy - 120.0) * 0.26
+		var xx := rng.randf_range(-spread, spread)
+		if absf(xx) < 58.0 and yy < 58.0:
+			continue # keep the cheeks clear; the beard frames the face, not eats it
+		beard_curls.append(Vector3(xx, yy, rng.randf_range(12.0, 22.0)))
 	for i in range(70):
 		stars.append(Vector2(rng.randf_range(306.0, 542.0), rng.randf_range(78.0, 200.0)))
 	for i in range(48):
@@ -569,6 +585,22 @@ func rect(x: float, y: float, w: float, h: float, c: Color) -> void:
 func circ(p: Vector2, r: float, c: Color) -> void:
 	draw_circle(p, r, c)
 
+func ellipse_pts(p: Vector2, rx: float, ry: float, n := 28) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for i in range(n):
+		var a := TAU * float(i) / n
+		pts.append(p + Vector2(cos(a) * rx, sin(a) * ry))
+	return pts
+
+func shadow(p: Vector2, rx: float, ry: float, a := 0.18) -> void:
+	draw_colored_polygon(ellipse_pts(p, rx, ry), Color(0, 0, 0, a))
+
+func vgrad(x: float, y: float, w: float, h: float, top: Color, bottom: Color, steps := 24) -> void:
+	for i in range(steps):
+		var f0 := float(i) / float(steps)
+		var f1 := float(i + 1) / float(steps)
+		draw_rect(Rect2(x, y + h * f0, w, h * (f1 - f0) + 1.0), top.lerp(bottom, (f0 + f1) * 0.5))
+
 func line(a: Vector2, b: Vector2, c: Color, w := 3.0) -> void:
 	draw_line(a, b, c, w)
 
@@ -604,28 +636,75 @@ func head_pos() -> Vector2:
 
 func _draw() -> void:
 	var phase := day_clock / DAY_LENGTH
-	# room
-	rect(0, 0, W, 478, C_WALL)
-	rect(0, 452, W, 26, C_WALL_DARK)
+	# room: gradient wall, baseboard, plank floor, rug
+	vgrad(0, 0, W, 478, C_WALL.lightened(0.07), C_WALL_DARK.darkened(0.05))
+	rect(0, 464, W, 14, Color("#e6ddc8"))
+	rect(0, 464, W, 3, Color(0, 0, 0, 0.18))
 	rect(0, 478, W, 170, C_FLOOR)
 	for i in range(9):
 		line(Vector2(0, 500 + i * 18), Vector2(W, 500 + i * 18), C_FLOOR_DARK, 2.0)
+	for i in range(7):
+		line(Vector2(90 + i * 165, 478), Vector2(50 + i * 165, 648), C_FLOOR_DARK, 2.0)
+	draw_colored_polygon(ellipse_pts(Vector2(590, 606), 505, 56), Color("#773838"))
+	draw_colored_polygon(ellipse_pts(Vector2(590, 606), 468, 44), Color("#87443e"))
+	draw_colored_polygon(ellipse_pts(Vector2(590, 606), 300, 24), Color("#773838"))
 
 	draw_window(phase)
+	draw_wall_decor()
 	draw_door()
 	draw_couch()
 	draw_lamp_and_table()
 	draw_chair()
 	draw_tender()
 	draw_desk()
+	draw_hands()
 	draw_router_and_strip()
 	draw_trash_pile()
+
+	# soft vignette so the room feels lit, not pasted
+	rect(0, 0, W, 22, Color(0, 0, 0, 0.05))
+	rect(0, H - 26, W, 26, Color(0, 0, 0, 0.07))
+	rect(0, 0, 20, H, Color(0, 0, 0, 0.04))
+	rect(W - 20, 0, 20, H, Color(0, 0, 0, 0.04))
 
 	if not power_on:
 		rect(0, 0, W, H, Color(0.02, 0.03, 0.10, 0.28))
 
+func draw_wall_decor() -> void:
+	# framed poster low on the left wall, tucked behind the couch:
+	# a very serious fantasy map he has never finished
+	shadow(Vector2(134, 258), 68, 82, 0.15)
+	rect(70, 176, 120, 152, Color("#3d2c1c"))
+	rect(76, 182, 108, 140, Color("#e8dcc0"))
+	rect(84, 190, 92, 84, Color("#a8c8d8"))
+	circ(Vector2(152, 210), 10, Color("#e8a13c"))
+	draw_colored_polygon(PackedVector2Array([Vector2(84, 274), Vector2(118, 232), Vector2(146, 274)]), Color("#5a7a5e"))
+	draw_colored_polygon(PackedVector2Array([Vector2(116, 274), Vector2(146, 240), Vector2(176, 274)]), Color("#476b52"))
+	for i in range(4):
+		rect(90, 284 + i * 10, 80 - i * 12, 4, Color("#8a7a5c"))
+	# shelf of treasures high on the right wall, above the witness log
+	rect(868, 128, 228, 10, Color("#5d4126"))
+	rect(868, 138, 228, 4, Color(0, 0, 0, 0.25))
+	rect(884, 92, 34, 36, Color("#2f6da3"))
+	rect(884, 92, 34, 6, Color("#f0e6d0"))
+	rect(924, 100, 28, 28, Color("#8e44ad"))
+	circ(Vector2(990, 108), 13, Color("#a83a32"))
+	draw_colored_polygon(PackedVector2Array([Vector2(982, 100), Vector2(972, 82), Vector2(986, 92)]), Color("#a83a32"))
+	circ(Vector2(1052, 114), 12, Color("#3f7d4e"))
+	line(Vector2(1052, 106), Vector2(1042, 88), Color("#3f7d4e"), 3)
+	line(Vector2(1052, 106), Vector2(1062, 86), Color("#4c995f"), 3)
+	line(Vector2(1052, 106), Vector2(1052, 84), Color("#3f7d4e"), 3)
+	rect(1042, 114, 20, 14, Color("#b06a3a"))
+	# sticky notes by the lamp, ancient wisdom
+	rect(238, 196, 26, 26, Color("#f5e27a"))
+	rect(242, 204, 18, 3, Color("#8a7a2c"))
+	rect(246, 210, 12, 3, Color("#8a7a2c"))
+	rect(232, 230, 22, 22, Color("#f2a7c3"))
+	rect(236, 237, 14, 3, Color("#9c5570"))
+
 func draw_window(phase: float) -> void:
 	# frame
+	rect(288, 56, 280, 212, Color("#596068"))
 	rect(292, 60, 272, 204, Color("#c8ced2"))
 	var sky := sky_color(phase)
 	if not power_on:
@@ -639,6 +718,8 @@ func draw_window(phase: float) -> void:
 	var sun_x := lerpf(322.0, 532.0, clampf(phase, 0.0, 1.0))
 	if nf < 0.6:
 		var sy := 210.0 - sin(clampf(phase, 0.0, 0.85) / 0.85 * PI) * 120.0
+		circ(Vector2(sun_x, sy), 30, Color(1.0, 0.85, 0.4, 0.18))
+		circ(Vector2(sun_x, sy), 22, Color(1.0, 0.88, 0.45, 0.25))
 		circ(Vector2(sun_x, sy), 17, Color("#ffd75e"))
 	else:
 		circ(Vector2(500, 105), 13, Color("#e8ecf4"))
@@ -690,6 +771,17 @@ func draw_couch() -> void:
 	rect(16, 300, 232, 36, Color("#776850"))
 	rect(124, 300, 4, 130, Color("#66583f"))
 	rect(16, 380, 232, 10, Color("#66583f"))
+	# seat cushions, seams, a throw pillow, and a soft shadow underneath
+	shadow(Vector2(132, 440), 128, 12, 0.20)
+	rect(22, 336, 102, 46, Color("#8f7d63"))
+	rect(130, 336, 102, 46, Color("#8a7660"))
+	rect(22, 336, 102, 6, Color(1, 1, 1, 0.08))
+	rect(130, 336, 102, 6, Color(1, 1, 1, 0.08))
+	draw_colored_polygon(PackedVector2Array([Vector2(196, 330), Vector2(232, 322), Vector2(238, 352), Vector2(202, 360)]), Color("#7a4a8e"))
+	draw_colored_polygon(PackedVector2Array([Vector2(202, 356), Vector2(238, 352), Vector2(232, 322), Vector2(224, 348)]), Color("#67407a"))
+	if power_on:
+		circ(Vector2(264, 180), 34, Color(1.0, 0.85, 0.5, 0.10))
+		circ(Vector2(264, 180), 20, Color(1.0, 0.87, 0.55, 0.12))
 	rect(24, 424, 12, 14, Color("#4c4130"))
 	rect(228, 424, 12, 14, Color("#4c4130"))
 	# abandoned clothes
@@ -726,10 +818,14 @@ func draw_lamp_and_table() -> void:
 	rect(856, 442, 30, 8, Color("#8e44ad"))
 
 func draw_chair() -> void:
-	rect(602, 108, 212, 428, C_CHAIR)
-	rect(616, 92, 184, 58, C_CHAIR_HI)
-	rect(602, 108, 212, 14, C_CHAIR_HI)
-	rect(806, 108, 8, 428, Color(0, 0, 0, 0.25))
+	rect(584, 112, 248, 430, C_CHAIR)
+	rect(584, 112, 248, 16, C_CHAIR_HI)
+	rect(610, 88, 196, 62, C_CHAIR_HI)
+	rect(610, 88, 196, 10, Color(1, 1, 1, 0.07))
+	rect(824, 112, 8, 430, Color(0, 0, 0, 0.25))
+	rect(584, 112, 8, 430, Color(1, 1, 1, 0.05))
+	line(Vector2(600, 300), Vector2(816, 300), Color(0, 0, 0, 0.22), 3)
+	line(Vector2(600, 430), Vector2(816, 430), Color(0, 0, 0, 0.22), 3)
 	# abandoned PC tower, left foreground, his old rig retired to lamp duty
 	rect(28, 366, 138, 262, Color("#191b20"))
 	rect(40, 378, 114, 238, Color("#7e1f1f") if power_on else Color("#3a2323"))
@@ -742,105 +838,147 @@ func draw_chair() -> void:
 func draw_tender() -> void:
 	var hp := head_pos()
 	var bob := sin(t * 1.4) * 1.5
-	# torso
+	# neck (mostly beard country, but the shirt needs somewhere to start)
+	rect(676, 296 + bob, 58, 46, C_SKIN_SHADE)
+	# torso: a big soft mountain of a man, shirt doing its best
 	draw_colored_polygon(PackedVector2Array([
-		Vector2(618, 372 + bob), Vector2(792, 372 + bob), Vector2(814, 548), Vector2(596, 548)]), C_SHIRT)
-	rect(618, 372 + bob, 174, 10, Color(0, 0, 0, 0.15))
-	# arms to keyboard (left) and mouse (right), typing bounce while playing
-	var type_bounce := 0.0
-	if power_on and wifi_on and mood == "focused":
-		type_bounce = sin(t * 17.0) * 2.0
-	line(Vector2(630, 388 + bob), Vector2(588, 468), C_SLEEVE, 30)
-	line(Vector2(588, 468), Vector2(642, 534 + type_bounce), C_SKIN, 22)
-	circ(Vector2(646, 538 + type_bounce), 13, C_SKIN)
-	line(Vector2(780, 388 + bob), Vector2(842, 466), C_SLEEVE, 30)
-	line(Vector2(842, 466), Vector2(862, 532 - type_bounce), C_SKIN, 22)
-	circ(Vector2(852, 506 - type_bounce), 14, Color("#22252b")) # wrist brace
-	circ(Vector2(864, 538 - type_bounce), 13, C_SKIN)
-	# beard mass behind/around jaw
+		Vector2(606, 356 + bob), Vector2(804, 356 + bob), Vector2(836, 448),
+		Vector2(828, 548), Vector2(582, 548), Vector2(574, 448)]), C_SHIRT)
+	# side shading + a belly that catches the monitor light
+	draw_colored_polygon(PackedVector2Array([
+		Vector2(574, 448), Vector2(600, 420), Vector2(606, 548), Vector2(582, 548)]), Color(0, 0, 0, 0.13))
+	draw_colored_polygon(PackedVector2Array([
+		Vector2(836, 448), Vector2(810, 420), Vector2(804, 548), Vector2(828, 548)]), Color(0, 0, 0, 0.13))
+	draw_colored_polygon(ellipse_pts(Vector2(705, 468), 92, 62), Color(1, 1, 1, 0.05))
+	# shirt folds straining heroically + collar + hem
+	draw_arc(Vector2(660, 470), 44, 0.3, PI - 0.6, 18, Color(0, 0, 0, 0.13), 3.0)
+	draw_arc(Vector2(750, 486), 40, 0.5, PI - 0.4, 18, Color(0, 0, 0, 0.11), 3.0)
+	draw_arc(Vector2(705, 420), 60, 0.4, PI - 0.4, 20, Color(0, 0, 0, 0.09), 3.0)
+	rect(664, 352 + bob, 82, 14, C_SLEEVE)
+	rect(582, 538, 246, 10, Color(0, 0, 0, 0.18))
+	# upper arms (sleeves); forearms and hands are drawn after the desk
+	line(Vector2(618, 380 + bob), Vector2(572, 462), C_SLEEVE, 42)
+	line(Vector2(792, 380 + bob), Vector2(850, 462), C_SLEEVE, 42)
+	# solid beard silhouette first, so the beard reads as a beard
+	for c in beard_mass:
+		var v: Vector3 = c
+		circ(hp + Vector2(v.x, v.y), v.z, C_BEARD.darkened(0.18))
+	# hair underlayer: one dark mass so the halo has no gaps
+	circ(hp + Vector2(0, -6), 82, C_HAIR.darkened(0.15))
+	# face: bigger, rounder, jowls and all
+	circ(hp, 72, C_SKIN)
+	rect(hp.x - 72, hp.y - 6, 144, 54, C_SKIN)
+	circ(hp + Vector2(-46, 30), 27, C_SKIN.darkened(0.05))
+	circ(hp + Vector2(46, 30), 27, C_SKIN.darkened(0.05))
+	circ(hp + Vector2(-40, 12), 15, Color(1, 1, 1, 0.07))
+	circ(hp + Vector2(40, 12), 15, Color(1, 1, 1, 0.07))
+	draw_arc(hp + Vector2(0, 34), 34, PI * 0.25, PI * 0.75, 20, C_SKIN_SHADE, 3.0)
+	draw_arc(hp, 72, 0, TAU, 40, Color(0.09, 0.06, 0.03, 0.35), 3.0)
+	# beard curl texture over the mass
 	for c in beard_curls:
 		var v: Vector3 = c
 		circ(hp + Vector2(v.x, v.y), v.z, C_BEARD)
-	# face
-	circ(hp, 60, C_SKIN)
-	rect(hp.x - 60, hp.y - 8, 120, 40, C_SKIN)
 	# hair halo
 	for c in hair_curls:
 		var v: Vector3 = c
 		circ(hp + Vector2(v.x, v.y), v.z, C_HAIR)
 	# a few lighter curls + beard highlights for likeness
-	for i in range(7):
+	for i in range(12):
 		var v: Vector3 = hair_curls[i * 5]
 		circ(hp + Vector2(v.x, v.y) * 0.98, v.z * 0.45, C_HAIR_HI)
-	for i in range(6):
+	for i in range(9):
 		var v: Vector3 = beard_curls[i * 7]
 		circ(hp + Vector2(v.x, v.y), v.z * 0.5, C_BEARD_HI)
 	# beard crumbs (emergency storage)
-	circ(hp + Vector2(-22, 96), 3, Color("#e8c877"))
-	circ(hp + Vector2(14, 128), 3, Color("#e8c877"))
-	circ(hp + Vector2(30, 84), 2.5, Color("#e8c877"))
-	# mustache
-	circ(hp + Vector2(-16, 44), 11, C_BEARD)
-	circ(hp + Vector2(16, 44), 11, C_BEARD)
-	circ(hp + Vector2(0, 40), 10, C_BEARD)
+	circ(hp + Vector2(-26, 108), 3.5, Color("#e8c877"))
+	circ(hp + Vector2(16, 142), 3.5, Color("#e8c877"))
+	circ(hp + Vector2(36, 96), 3, Color("#e8c877"))
+	circ(hp + Vector2(-8, 168), 3, Color("#e8c877"))
+	# mustache: big, proud, mostly hiding the mouth
+	circ(hp + Vector2(-19, 44), 14, C_BEARD)
+	circ(hp + Vector2(19, 44), 14, C_BEARD)
+	circ(hp + Vector2(0, 40), 13, C_BEARD)
+	circ(hp + Vector2(0, 50), 9, C_BEARD.darkened(0.1))
 	# eyes + brows by mood
 	var look := Vector2(-3, 2)
 	if mood == "rage":
 		look = Vector2(0, 0)
-		rect(hp.x - 62, hp.y - 66, 124, 130, Color(0.9, 0.25, 0.2, 0.16))
+		circ(hp + Vector2(0, -4), 86, Color(0.9, 0.25, 0.2, 0.15))
 	if mood != "cry":
-		var eye_r := 16.0 if mood == "shock" else 13.0
-		var pup_r := 2.6 if mood == "shock" else 5.0
-		circ(hp + Vector2(-27, -12), eye_r, Color.WHITE)
-		circ(hp + Vector2(27, -12), eye_r, Color.WHITE)
-		circ(hp + Vector2(-27, -12) + look, pup_r, Color("#241a12"))
-		circ(hp + Vector2(27, -12) + look, pup_r, Color("#241a12"))
+		var eye_r := 19.0 if mood == "shock" else 15.0
+		var pup_r := 3.0 if mood == "shock" else 5.5
+		circ(hp + Vector2(-29, -12), eye_r, Color.WHITE)
+		circ(hp + Vector2(29, -12), eye_r, Color.WHITE)
+		circ(hp + Vector2(-29, -12) + look, pup_r, Color("#241a12"))
+		circ(hp + Vector2(29, -12) + look, pup_r, Color("#241a12"))
+		circ(hp + Vector2(-29, -12) + look + Vector2(-2, -2), 1.8, Color.WHITE)
+		circ(hp + Vector2(29, -12) + look + Vector2(-2, -2), 1.8, Color.WHITE)
+		# heavy lids + the eye bags of a man who has seen many patch days
+		draw_arc(hp + Vector2(-29, -13), eye_r + 1.5, PI * 1.08, PI * 1.92, 16, C_SKIN_SHADE, 3.0)
+		draw_arc(hp + Vector2(29, -13), eye_r + 1.5, PI * 1.08, PI * 1.92, 16, C_SKIN_SHADE, 3.0)
+		draw_arc(hp + Vector2(-29, -6), 13, PI * 0.2, PI * 0.8, 12, Color(0.4, 0.25, 0.15, 0.35), 2.5)
+		draw_arc(hp + Vector2(29, -6), 13, PI * 0.2, PI * 0.8, 12, Color(0.4, 0.25, 0.15, 0.35), 2.5)
 	else:
-		line(hp + Vector2(-40, -10), hp + Vector2(-14, -6), Color("#241a12"), 4)
-		line(hp + Vector2(14, -6), hp + Vector2(40, -10), Color("#241a12"), 4)
+		line(hp + Vector2(-44, -10), hp + Vector2(-16, -6), Color("#241a12"), 4)
+		line(hp + Vector2(16, -6), hp + Vector2(44, -10), Color("#241a12"), 4)
 		# tears
 		for side in [-1.0, 1.0]:
 			for k in range(3):
 				var fall := fmod(t * 150.0 + k * 46.0 + (30.0 if side > 0.0 else 0.0), 110.0)
-				circ(hp + Vector2(side * 27, 2 + fall), 4.5, Color(0.45, 0.75, 1.0, 0.9))
-			line(hp + Vector2(side * 27, 0), hp + Vector2(side * 25, 66), Color(0.45, 0.75, 1.0, 0.5), 5)
-	# brows
+				circ(hp + Vector2(side * 29, 2 + fall), 4.5, Color(0.45, 0.75, 1.0, 0.9))
+			line(hp + Vector2(side * 29, 0), hp + Vector2(side * 27, 66), Color(0.45, 0.75, 1.0, 0.5), 5)
+	# brows: thick, expressive, load-bearing
 	match mood:
 		"rage":
-			line(hp + Vector2(-42, -36), hp + Vector2(-12, -24), Color("#1c130c"), 6)
-			line(hp + Vector2(42, -36), hp + Vector2(12, -24), Color("#1c130c"), 6)
+			line(hp + Vector2(-46, -38), hp + Vector2(-14, -25), Color("#1c130c"), 7)
+			line(hp + Vector2(46, -38), hp + Vector2(14, -25), Color("#1c130c"), 7)
 		"shock", "cry":
-			line(hp + Vector2(-42, -40), hp + Vector2(-12, -44), Color("#1c130c"), 5)
-			line(hp + Vector2(12, -44), hp + Vector2(42, -40), Color("#1c130c"), 5)
+			line(hp + Vector2(-46, -42), hp + Vector2(-14, -47), Color("#1c130c"), 6)
+			line(hp + Vector2(14, -47), hp + Vector2(46, -42), Color("#1c130c"), 6)
 		"hiss":
-			line(hp + Vector2(-42, -28), hp + Vector2(-12, -32), Color("#1c130c"), 5)
-			line(hp + Vector2(12, -32), hp + Vector2(42, -28), Color("#1c130c"), 5)
+			line(hp + Vector2(-46, -30), hp + Vector2(-14, -34), Color("#1c130c"), 6)
+			line(hp + Vector2(14, -34), hp + Vector2(46, -30), Color("#1c130c"), 6)
 		_:
-			line(hp + Vector2(-42, -34), hp + Vector2(-12, -34), Color("#1c130c"), 5)
-			line(hp + Vector2(12, -34), hp + Vector2(42, -34), Color("#1c130c"), 5)
-	# mouth by mood
+			line(hp + Vector2(-46, -36), hp + Vector2(-14, -36), Color("#1c130c"), 6)
+			line(hp + Vector2(14, -36), hp + Vector2(46, -36), Color("#1c130c"), 6)
+	# mouth by mood (what little of it escapes the mustache)
 	match mood:
 		"rage":
-			rect(hp.x - 14, hp.y + 52, 28, 14, Color("#4a1410"))
-			rect(hp.x - 14, hp.y + 52, 28, 4, Color.WHITE)
+			rect(hp.x - 15, hp.y + 56, 30, 14, Color("#4a1410"))
+			rect(hp.x - 15, hp.y + 56, 30, 4, Color.WHITE)
 		"shock":
-			circ(hp + Vector2(0, 56), 9, Color("#4a1410"))
+			circ(hp + Vector2(0, 59), 10, Color("#4a1410"))
 		"cry":
-			draw_arc(hp + Vector2(0, 66), 11, PI + 0.4, TAU - 0.4, 12, Color("#4a2c20"), 3.5)
+			draw_arc(hp + Vector2(0, 70), 12, PI + 0.4, TAU - 0.4, 12, Color("#4a2c20"), 3.5)
 		"hiss":
 			for i in range(4):
-				line(hp + Vector2(-14 + i * 8, 56), hp + Vector2(-10 + i * 8, 62), Color("#4a2c20"), 3)
+				line(hp + Vector2(-14 + i * 8, 59), hp + Vector2(-10 + i * 8, 66), Color("#4a2c20"), 3)
 		_:
-			line(hp + Vector2(-11, 58), hp + Vector2(11, 58), Color("#7a4a34"), 4)
+			line(hp + Vector2(-12, 61), hp + Vector2(12, 61), Color("#7a4a34"), 4)
 	# steam when raging
 	if mood == "rage":
 		for i in range(6):
 			var side := -1.0 if i % 2 == 0 else 1.0
 			var rise := fmod(t * 55.0 + i * 26.0, 84.0)
 			var alpha := 0.65 * (1.0 - rise / 84.0)
-			circ(hp + Vector2(side * (66 + (i % 3) * 7), -52 - rise), 8 + rise * 0.12, Color(0.9, 0.9, 0.92, alpha))
+			circ(hp + Vector2(side * (84 + (i % 3) * 8), -60 - rise), 8 + rise * 0.12, Color(0.9, 0.9, 0.92, alpha))
 	# nose
-	line(hp + Vector2(2, 8), hp + Vector2(-3, 26), C_SKIN_SHADE, 4)
+	line(hp + Vector2(3, 10), hp + Vector2(-4, 30), C_SKIN_SHADE, 5)
+	circ(hp + Vector2(-7, 33), 2.2, C_SKIN_SHADE)
+	circ(hp + Vector2(6, 33), 2.2, C_SKIN_SHADE)
+
+func draw_hands() -> void:
+	# forearms + hands rest ON the desk, so they are drawn after it
+	var type_bounce := 0.0
+	if power_on and wifi_on and mood == "focused":
+		type_bounce = sin(t * 17.0) * 2.0
+	line(Vector2(572, 462), Vector2(640, 532 + type_bounce), C_SKIN, 30)
+	circ(Vector2(644, 537 + type_bounce), 17, C_SKIN)
+	circ(Vector2(638, 530 + type_bounce), 7, Color(1, 1, 1, 0.10))
+	line(Vector2(850, 462), Vector2(864, 530 - type_bounce), C_SKIN, 30)
+	circ(Vector2(856, 500 - type_bounce), 19, Color("#22252b")) # wrist brace
+	circ(Vector2(866, 537 - type_bounce), 17, C_SKIN)
+	circ(Vector2(860, 530 - type_bounce), 7, Color(1, 1, 1, 0.10))
 
 func draw_desk() -> void:
 	# desk surface + front
@@ -850,17 +988,37 @@ func draw_desk() -> void:
 	rect(285, 318, 245, 176, C_BLACK)
 	rect(297, 330, 221, 140, Color("#0a0f1c"))
 	if power_on and wifi_on:
-		rect(297, 330, 221, 84, Color("#79a6ff"))
-		draw_colored_polygon(PackedVector2Array([Vector2(297, 414), Vector2(380, 372), Vector2(452, 414)]), Color("#4e9b47"))
-		draw_colored_polygon(PackedVector2Array([Vector2(380, 414), Vector2(470, 380), Vector2(518, 414), Vector2(518, 470), Vector2(297, 470)]), Color("#3c7f3a"))
-		# tiny hero, forever mid-quest
+		# in-game sky with a little depth, mountains, ground
+		rect(297, 330, 221, 30, Color("#5f8fe8"))
+		rect(297, 360, 221, 30, Color("#79a6ff"))
+		rect(297, 390, 221, 24, Color("#a8c8f0"))
+		circ(Vector2(492, 348), 9, Color("#ffe9a3"))
+		draw_colored_polygon(PackedVector2Array([Vector2(297, 414), Vector2(352, 380), Vector2(404, 414)]), Color("#6a8f6e"))
+		draw_colored_polygon(PackedVector2Array([Vector2(380, 414), Vector2(452, 372), Vector2(518, 414)]), Color("#4e9b47"))
+		draw_colored_polygon(PackedVector2Array([Vector2(297, 414), Vector2(518, 414), Vector2(518, 470), Vector2(297, 470)]), Color("#3c7f3a"))
+		draw_colored_polygon(PackedVector2Array([Vector2(330, 470), Vector2(392, 436), Vector2(420, 436), Vector2(380, 470)]), Color("#8a734f"))
+		# tiny hero, forever mid-quest, now with a cape and a minimap to ignore
 		var hx := 330.0 + fmod(t * 26.0, 130.0)
+		draw_colored_polygon(PackedVector2Array([Vector2(hx - 3, 426), Vector2(hx + 2, 424), Vector2(hx - 5, 442)]), Color("#5e2f85"))
 		rect(hx, 424, 10, 16, Color("#8e44ad"))
 		circ(Vector2(hx + 5, 420), 5, C_SKIN)
 		line(Vector2(hx + 10, 430), Vector2(hx + 20, 422), Color("#d7dde3"), 3)
-		circ(Vector2(492, 436), 6, Color("#e64545"))
-		rect(305, 338, 92, 8, C_RED)
-		rect(305, 350, 72, 7, Color("#3f7fe0"))
+		circ(Vector2(492, 436), 7, Color("#e64545"))
+		draw_colored_polygon(PackedVector2Array([Vector2(486, 424), Vector2(490, 416), Vector2(494, 424)]), Color("#e64545"))
+		draw_colored_polygon(PackedVector2Array([Vector2(494, 424), Vector2(498, 416), Vector2(502, 424)]), Color("#e64545"))
+		# party frames + minimap: the full MMO HUD experience
+		for p in range(3):
+			rect(301, 336 + p * 17, 34, 14, Color(0.05, 0.06, 0.1, 0.75))
+			rect(303, 339 + p * 17, 30, 4, C_GREEN if p < 2 else Color("#e8b13c"))
+			rect(303, 345 + p * 17, 22, 3, Color("#3f7fe0"))
+		circ(Vector2(498, 350), 15, Color(0.05, 0.08, 0.05, 0.8))
+		draw_arc(Vector2(498, 350), 15, 0, TAU, 24, Color("#c9a227"), 2.0)
+		circ(Vector2(503, 345), 2.5, Color("#e64545"))
+		circ(Vector2(492, 356), 2, Color("#7ed957"))
+		rect(305, 396, 92, 8, C_RED)
+		rect(305, 407, 72, 7, Color("#3f7fe0"))
+		rect(hx - 6, 446, 34, 4, Color(0, 0, 0, 0.55))
+		rect(hx - 6, 446, 34.0 * (0.5 + 0.5 * sin(t * 0.9)), 4, Color("#c9a227"))
 		for i in range(8):
 			rect(305 + i * 26, 446, 22, 20, Color(0.12, 0.13, 0.18))
 			circ(Vector2(316 + i * 26, 456), 3, C_GOLD if i % 3 == 0 else Color("#7fb2ff"))
@@ -873,12 +1031,17 @@ func draw_desk() -> void:
 		line(Vector2(310, 460), Vector2(420, 344), Color(1, 1, 1, 0.05), 10)
 	rect(392, 494, 30, 14, Color("#23252b"))
 	rect(362, 506, 92, 8, Color("#23252b"))
+	shadow(Vector2(407, 516), 150, 10, 0.16)
+	if power_on and wifi_on:
+		draw_colored_polygon(PackedVector2Array([Vector2(310, 514), Vector2(500, 514), Vector2(560, 570), Vector2(250, 570)]), Color(0.55, 0.7, 1.0, 0.05))
 	# keyboard + keys
 	rect(548, 522, 282, 38, Color("#1d1f26"))
 	for r in range(3):
 		for i in range(16):
 			rect(556 + i * 17, 528 + r * 11, 13, 8, Color("#3a3f4a"))
-	# mouse + cord
+	# mouse on its pad + cord
+	rect(836, 516, 62, 54, Color("#2c2f38"))
+	rect(839, 519, 56, 48, Color("#343945"))
 	circ(Vector2(866, 542), 13, Color("#23252b"))
 	circ(Vector2(866, 537), 6, Color("#3a3f4a"))
 	line(Vector2(866, 530), Vector2(900, 512), Color("#101216"), 2)
