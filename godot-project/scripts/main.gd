@@ -60,6 +60,15 @@ var trash_spots: Array = []  # precomputed Vector2 pile anchors
 # ---------- nodes ----------
 var pixel_font: Font
 var scene_tex: Texture2D
+# animation life: layered slices of the illustrated scene, moved a few pixels to game with
+var surge_until := -10.0
+var next_surge := 6.0
+var boss_hp := 1.0
+var flashes: Array = []
+var next_flash := 0.0
+var last_click := 0.0
+var click_player: AudioStreamPlayer
+var cur_head_off := Vector2.ZERO
 var ui: CanvasLayer
 var hud_label: Label
 var log_label: Label
@@ -175,10 +184,15 @@ func _build_audio() -> void:
 	sfx_player = AudioStreamPlayer.new()
 	sfx_player.volume_db = -4.0
 	add_child(sfx_player)
+	click_player = AudioStreamPlayer.new()
+	click_player.volume_db = -17.0
+	add_child(click_player)
 	for n in ["theme", "click", "rage", "powerdown", "powerup", "snack", "hiss"]:
 		var s = load("res://assets/audio/%s.wav" % n)
 		if s:
 			streams[n] = s
+	if streams.has("click"):
+		click_player.stream = streams["click"]
 	if streams.has("theme"):
 		music_player.stream = streams["theme"]
 		music_player.finished.connect(func() -> void:
@@ -268,16 +282,7 @@ func _build_ui() -> void:
 	make_button("POKE", 1026, 10, 60, 36, poke)
 	make_button("MUTE", 1092, 10, 52, 36, toggle_mute)
 
-	# witness log (right)
-	var log_panel := Panel.new()
-	log_panel.position = Vector2(916, 196)
-	log_panel.size = Vector2(224, 216)
-	log_panel.add_theme_stylebox_override("panel", style_box(Color(0.04, 0.05, 0.08, 0.78), Color(1, 1, 1, 0.25), 1))
-	ui.add_child(log_panel)
-	ui.add_child(make_label("WITNESS LOG", 928, 204, 200, 18, 10, C_GOLD))
-	log_label = make_label("", 928, 228, 202, 176, 9, Color(0.92, 0.94, 0.97))
-	log_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	ui.add_child(log_label)
+	# witness log removed at Mochi's request (Oct 21); log() keeps its lines silently now
 
 	# world labels
 	ui.add_child(make_label("BED (UNUSED)", 26, 268, 220, 20, 11, Color(1, 1, 1, 0.85)))
@@ -577,6 +582,29 @@ func _process(delta: float) -> void:
 
 	hud_label.text = "DAY %03d   /PLAYED %s HRS\nSNACKS %d  TRASH %d  RAGES %d  MELTDOWNS %d\nSUNLIGHT AVOIDED: %d" % [day, fmt(int(played_hours)), snacks, trash, rages, meltdowns, sunlight_avoided]
 
+	# ---- animation drivers: combat surges, the boss, spell flashes, key clicks ----
+	var surge_now := started and power_on and wifi_on and mood == "focused" and t < surge_until
+	if started and power_on and wifi_on and mood == "focused":
+		if t > next_surge:
+			surge_until = t + randf_range(2.0, 3.2)
+			next_surge = surge_until + randf_range(7.0, 12.0)
+			surge_now = true
+		boss_hp -= delta / 26.0
+		if boss_hp <= 0.0:
+			boss_hp = 1.0
+			if bubble_time <= 0.0 and randf() < 0.45:
+				show_bubble("boss down. next.", 2.2)
+		if t > next_flash:
+			next_flash = t + (randf_range(0.3, 0.9) if surge_now else randf_range(1.2, 2.8))
+			var palette := [Color(0.45, 0.8, 1.0), Color(1.0, 0.62, 0.25), Color(0.72, 0.5, 1.0), Color(0.45, 1.0, 0.6)]
+			flashes.append({"pos": Vector2(randf_range(180.0, 410.0), randf_range(480.0, 590.0)), "color": palette[randi() % palette.size()], "until": t + 0.28})
+		var typing := surge_now or fmod(t, 1.9) < 1.25
+		if typing and not muted and t - last_click > (0.085 if surge_now else 0.13):
+			last_click = t
+			if click_player and click_player.stream:
+				click_player.play()
+	flashes = flashes.filter(func(f) -> bool: return t < float(f["until"]))
+
 	# ticker scroll
 	var nx := ticker_label.position.x - delta * 55.0
 	if nx < -ticker_width:
@@ -642,6 +670,9 @@ func head_pos() -> Vector2:
 	return p
 
 const SCREEN_RECT := Rect2(144, 451, 295, 173) # the monitor screen inside the illustrated scene, measured from a zoomed crop
+const HEAD_SRC := Rect2(552, 6, 474, 344) # his head and halo, a slice of the same art
+const KB_SRC := Rect2(436, 468, 156, 116) # his keyboard hand and forearm
+const MS_SRC := Rect2(842, 462, 148, 132) # his mouse hand and forearm
 
 func _draw() -> void:
 	var phase := day_clock / DAY_LENGTH
@@ -653,6 +684,35 @@ func _draw() -> void:
 	if not started:
 		rect(0, 0, W, H, Color(0.01, 0.01, 0.04, 0.80))
 		return
+	# ---- he is actually gaming now: slices of the same art, shifted a few pixels ----
+	var surge := power_on and wifi_on and mood == "focused" and t < surge_until
+	cur_head_off = Vector2(sin(t * 0.9) * 1.2, sin(t * 1.3) * 1.5)
+	if mood == "cry":
+		cur_head_off.y += sin(t * 6.0) * 2.0
+	elif surge:
+		cur_head_off += Vector2(2.0, 3.5 + sin(t * 9.0) * 1.2)
+	elif mood == "focused":
+		cur_head_off.y += sin(t * 6.0) * 0.4
+	if scene_tex:
+		var tap := 0.0
+		if power_on and wifi_on and mood != "cry":
+			if surge:
+				tap = -absf(sin(t * 26.0)) * 3.2
+			elif fmod(t, 1.9) < 1.25:
+				tap = -absf(sin(t * 15.0)) * 2.4
+		draw_texture_rect_region(scene_tex, Rect2(KB_SRC.position + Vector2(0, tap), KB_SRC.size), KB_SRC)
+		var m_off := Vector2(sin(t * 0.7) * 1.5, -1.2 * pow(maxf(0.0, sin(t * 2.1)), 6.0))
+		if surge:
+			m_off.x += sin(t * 13.0) * 1.0
+		draw_texture_rect_region(scene_tex, Rect2(MS_SRC.position + m_off, MS_SRC.size), MS_SRC)
+		draw_texture_rect_region(scene_tex, Rect2(HEAD_SRC.position + cur_head_off, HEAD_SRC.size), HEAD_SRC)
+		if power_on and wifi_on:
+			rect(202.0 + 198.0 * boss_hp, 447, 198.0 * (1.0 - boss_hp), 9, Color(0.05, 0.02, 0.02, 0.60))
+			for f in flashes:
+				var fp: Vector2 = f["pos"]
+				var fc: Color = f["color"]
+				var fa: float = 0.16 * clampf((float(f["until"]) - t) / 0.28, 0.0, 1.0)
+				circ(fp, 26, Color(fc, fa))
 	# night settles over the room
 	var nf := night_factor(phase)
 	if nf > 0.02 and power_on:
@@ -670,20 +730,20 @@ func _draw() -> void:
 			draw_string(pixel_font, Vector2(SCREEN_RECT.position.x, SCREEN_RECT.position.y + 165), "DISCONNECTED", HORIZONTAL_ALIGNMENT_CENTER, SCREEN_RECT.size.x, 11, C_RED)
 	# his face lives around (763, 205) in the art: a rage flush + steam off the halo
 	if mood == "rage":
-		circ(Vector2(763, 200), 150, Color(0.9, 0.25, 0.2, 0.10))
+		circ(Vector2(763, 200) + cur_head_off, 150, Color(0.9, 0.25, 0.2, 0.10))
 		for i in range(6):
 			var side := -1.0 if i % 2 == 0 else 1.0
 			var rise := fmod(t * 55.0 + i * 26.0, 84.0)
 			var alpha := 0.6 * (1.0 - rise / 84.0)
-			circ(Vector2(763 + side * (95 + (i % 3) * 16), 96 - rise), 9 + rise * 0.13, Color(0.92, 0.92, 0.94, alpha))
+			circ(Vector2(763 + side * (95 + (i % 3) * 16), 96 - rise) + cur_head_off, 9 + rise * 0.13, Color(0.92, 0.92, 0.94, alpha))
 	# tears for the meltdown, streaming from his eyes down into the beard
 	if mood == "cry":
 		for side in [-1.0, 1.0]:
-			var ex: float = 763.0 + side * 46.0
-			line(Vector2(ex, 216), Vector2(ex - side * 3.0, 300), Color(0.45, 0.75, 1.0, 0.55), 5)
+			var ex: float = 763.0 + side * 46.0 + cur_head_off.x
+			line(Vector2(ex, 216 + cur_head_off.y), Vector2(ex - side * 3.0, 300 + cur_head_off.y), Color(0.45, 0.75, 1.0, 0.55), 5)
 			for k in range(3):
 				var fall := fmod(t * 150.0 + k * 40.0 + (24.0 if side > 0.0 else 0.0), 96.0)
-				circ(Vector2(ex, 222 + fall), 4.5, Color(0.45, 0.75, 1.0, 0.9))
+				circ(Vector2(ex, 222 + fall + cur_head_off.y), 4.5, Color(0.45, 0.75, 1.0, 0.9))
 	if not power_on:
 		rect(0, 0, W, H, Color(0.02, 0.03, 0.10, 0.30))
 

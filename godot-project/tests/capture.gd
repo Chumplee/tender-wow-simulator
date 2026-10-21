@@ -32,5 +32,13 @@ func _init() -> void:
 	await wait_frames(30)
 	print("MOOD AT CRY CAPTURE: ", game.mood)
 	await snap(game, "04_unplugged_cry")
+	# back to the game, force a combat surge, and shoot a burst for the animation proof
+	game.toggle_plug()
+	game.toggle_wifi()
+	game.mood = "focused"
+	game.surge_until = game.t + 30.0
+	for k in range(8):
+		await wait_frames(7)
+		await snap(game, "anim_%02d" % k)
 	print("CAPTURE DONE")
 	quit(0)
