@@ -27,11 +27,11 @@ func _init() -> void:
 	await wait_frames(40)
 	await snap(game, "03_wifi_rage")
 	game.toggle_plug()
-	game._process(1.6) # burn through the shock beat into the breakdown
+	game._process(1.6) # burn through the shock beat into the bloodrage
 	game._process(0.1)
 	await wait_frames(30)
-	print("MOOD AT CRY CAPTURE: ", game.mood)
-	await snap(game, "04_unplugged_cry")
+	print("MOOD AT BLOODRAGE CAPTURE: ", game.mood)
+	await snap(game, "04_unplugged_bloodrage")
 	# back to the game, force a combat surge, and shoot a burst for the animation proof
 	game.toggle_plug()
 	game.toggle_wifi()

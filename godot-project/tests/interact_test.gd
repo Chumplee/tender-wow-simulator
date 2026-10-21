@@ -22,7 +22,7 @@ func _init() -> void:
 	print("TEST after start: started=", game.started, " mood=", game.mood, " day=", game.day)
 	game.toggle_wifi()
 	await wait_frames(30)
-	print("TEST after kill wifi: wifi_on=", game.wifi_on, " mood=", game.mood, " rages=", game.rages)
+	print("TEST after kill wifi: wifi_on=", game.wifi_on, " mood=", game.mood, " meltdowns=", game.meltdowns)
 	game.toggle_wifi()
 	await wait_frames(20)
 	print("TEST after restore wifi: wifi_on=", game.wifi_on, " mood=", game.mood)
@@ -38,8 +38,8 @@ func _init() -> void:
 	await wait_frames(10)
 	game.toggle_plug()
 	await wait_frames(30)
-	print("TEST after yank plug: power_on=", game.power_on, " mood=", game.mood, " meltdowns=", game.meltdowns)
-	await wait_frames(150) # shock should decay into crying
+	print("TEST after yank plug: power_on=", game.power_on, " mood=", game.mood, " rages=", game.rages)
+	await wait_frames(150) # shock should decay into bloodrage
 	print("TEST after waiting unplugged: mood=", game.mood)
 	game.toggle_plug()
 	await wait_frames(20)

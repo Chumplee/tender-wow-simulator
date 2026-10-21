@@ -81,9 +81,9 @@ var bracket_until := 0.0
 var cast_f := 0.0
 var big_label: Label
 var last_mood := ""
-var vid_player: VideoStreamPlayer
-var video_mode := false
-var last_vid_state := ""
+var curtain_t0 := -10.0
+var next_scream := 0.0
+var next_wail := 0.0
 var ui: CanvasLayer
 var hud_label: Label
 var log_label: Label
@@ -132,6 +132,25 @@ const WAIL_LINES := [
 	"IT'S ALL GONE!!",
 	"NOT THE RAID... NOT LIKE THIS...",
 	"WHY WOULD YOU DO THIS TO ME!!",
+]
+const RAGE_BIG_LINES := [
+	"FUCK!! FUCK!! FUCK!!",
+	"MY FUCKING RAID!!",
+	"GODDAMMIT!! NOT THE PULL!!",
+	"SON OF A BITCH!!",
+	"I'LL KILL THE GRID ITSELF!!",
+]
+const SKY_BIG_LINES := [
+	"WHY, GOD?!",
+	"THE WORLD HAS ENDED.",
+	"EVEN HEAVEN LOGGED OUT.",
+	"IT'S ALL OVER. ALL OF IT.",
+]
+const SKY_BUBBLE_LINES := [
+	"the sky... even the sky left me...",
+	"god has logged out of my life.",
+	"everything is over. everything.",
+	"i looked up and heaven was buffering.",
 ]
 const POKE_LINES := [
 	"hm? oh. it's you. the cursor of god.",
@@ -198,33 +217,10 @@ func _ready() -> void:
 		scene_tex = st
 
 	_build_audio()
-	_build_video()
 	_build_ui()
 	_build_start()
 	add_log("Tender has logged in. Tender is always logged in.")
 	queue_redraw()
-
-# ================= VIDEO =================
-# The room is a real animated clip now (him, actually gaming). It sits on a
-# canvas layer beneath everything; _draw paints only overlays on top of it.
-# If the clip is missing, the illustrated still and its slice tricks return.
-func _build_video() -> void:
-	var layer := CanvasLayer.new()
-	layer.layer = -1
-	add_child(layer)
-	vid_player = VideoStreamPlayer.new()
-	vid_player.set_anchors_preset(Control.PRESET_FULL_RECT)
-	vid_player.expand = true
-	vid_player.volume_db = -50.0
-	layer.add_child(vid_player)
-	var vs = load("res://assets/video/gaming.ogv")
-	if vs:
-		vid_player.stream = vs
-		video_mode = true
-		vid_player.finished.connect(func() -> void:
-			if vid_player:
-				vid_player.play())
-		vid_player.play()
 
 # ================= AUDIO =================
 func _build_audio() -> void:
@@ -467,13 +463,12 @@ func toggle_wifi() -> void:
 		return
 	if wifi_on:
 		wifi_on = false
-		rages += 1
-		mood = "rage"
-		mood_time = 6.0
+		meltdowns += 1
+		mood = "skycry"
+		mood_time = 600.0
 		offline_timer = 10.0
-		play_sfx("rage")
-		show_bubble(RAGE_LINES[randi() % RAGE_LINES.size()], 4.0)
-		add_log("You killed the Wi-Fi. His ping flatlined mid-pull.")
+		show_bubble(SKY_BUBBLE_LINES[randi() % SKY_BUBBLE_LINES.size()], 4.0)
+		add_log("You killed the Wi-Fi. He turned his face to the heavens and wept.")
 	else:
 		restore_wifi("You restored the Wi-Fi. A hero, briefly.")
 	update_buttons()
@@ -481,7 +476,7 @@ func toggle_wifi() -> void:
 func restore_wifi(log_text: String) -> void:
 	wifi_on = true
 	offline_timer = 0.0
-	if mood == "rage":
+	if mood == "skycry":
 		mood = "focused"
 	show_bubble("and we're back. i was calm the whole time.", 3.0)
 	add_log(log_text)
@@ -492,16 +487,17 @@ func toggle_plug() -> void:
 		return
 	if power_on:
 		power_on = false
-		meltdowns += 1
+		rages += 1
 		mood = "shock"
-		mood_time = 1.4
+		mood_time = 1.0
 		play_sfx("powerdown")
 		music_player.stop()
 		show_bubble("...no. NO. NO NO NO-", 2.6)
 		add_log("You yanked the plug. The scream is still echoing.")
 	else:
 		power_on = true
-		mood = "focused"
+		mood = "relief"
+		mood_time = 2.2
 		play_sfx("powerup")
 		if streams.has("theme") and not muted:
 			music_player.play()
@@ -534,6 +530,7 @@ func toggle_curtains() -> void:
 		sunlight_avoided += 1
 		mood = "hiss"
 		mood_time = 2.6
+		curtain_t0 = t
 		play_sfx("hiss")
 		show_bubble("HISSS. THE OUTSIDE BALL. IT BURNS US.", 2.6)
 		add_log("You opened the curtains. He hissed at the sun like a raccoon.")
@@ -602,18 +599,16 @@ func _process(delta: float) -> void:
 		mood_time -= delta
 		if mood_time <= 0.0:
 			if mood == "shock" and not power_on:
-				mood = "cry"
-				mood_time = 5.0
-				show_bubble(CRY_LINES[randi() % CRY_LINES.size()], 3.6)
-			elif mood == "cry" and not power_on:
-				mood_time = 4.0
-				show_bubble(CRY_LINES[randi() % CRY_LINES.size()], 3.4)
+				mood = "bloodrage"
+				mood_time = 600.0
+				play_sfx("rage")
+				show_bubble(RAGE_LINES[randi() % RAGE_LINES.size()], 3.6)
 			elif mood == "hiss":
 				blinds_open = false
 				mood = "focused"
 				update_buttons()
 				add_log("He closed the blinds himself. At record speed.")
-			elif mood == "rage":
+			elif mood == "relief":
 				mood = "focused"
 
 	if not wifi_on and power_on and offline_timer > 0.0:
@@ -672,44 +667,27 @@ func _process(delta: float) -> void:
 	var b_target := 0.0 if blinds_open else 1.0
 	blinds_anim = move_toward(blinds_anim, b_target, delta * (4.0 if mood == "hiss" else 1.6))
 
-	# the sob track runs only while he grieves in the dark
+	# the sob track runs while he weeps at the heavens over the dead Wi-Fi
 	if sob_player and sob_player.stream:
-		if mood == "cry" and not muted:
+		if mood == "skycry" and not muted:
 			if not sob_player.playing:
 				sob_player.play()
 		elif sob_player.playing:
 			sob_player.stop()
 
-	# video direction: rage shakes the frame itself, the power cut freezes it mid-frame
-	if video_mode and vid_player:
-		var vstate := "game"
-		if mood == "cry":
-			vstate = "cry"
-		elif mood == "shock":
-			vstate = "shock"
-		elif mood == "rage":
-			vstate = "rage"
-		if vstate != last_vid_state:
-			vid_player.paused = vstate == "cry" or vstate == "shock"
-			last_vid_state = vstate
-		if mood == "rage":
-			vid_player.position = Vector2((sin(t * 47.0) + sin(t * 31.0)) * 1.8, sin(t * 39.0) * 1.4)
-		elif mood == "cry":
-			vid_player.position = Vector2(sin(t * 1.1) * 3.0, 2.0)
-		else:
-			vid_player.position = Vector2.ZERO
-
-	# big feelings: screams, wails, and one startled beat
+	# big feelings: bloodrage screams rotate, sky grief rotates slower
 	if mood != last_mood:
-		if mood == "rage":
-			big_label.text = SCREAM_LINES[randi() % SCREAM_LINES.size()]
-			big_label.add_theme_color_override("font_color", Color(1.0, 0.35, 0.2))
+		if mood == "bloodrage":
+			big_label.text = RAGE_BIG_LINES[randi() % RAGE_BIG_LINES.size()]
+			big_label.add_theme_color_override("font_color", Color(1.0, 0.22, 0.12))
 			big_label.visible = true
-		elif mood == "cry":
+			next_scream = t + 2.2
+		elif mood == "skycry":
 			cry_t0 = t
-			big_label.text = WAIL_LINES[randi() % WAIL_LINES.size()]
+			big_label.text = SKY_BIG_LINES[randi() % SKY_BIG_LINES.size()]
 			big_label.add_theme_color_override("font_color", Color(0.55, 0.8, 1.0))
 			big_label.visible = true
+			next_wail = t + 3.0
 		elif mood == "shock":
 			big_label.text = "!!"
 			big_label.add_theme_color_override("font_color", Color(1.0, 0.95, 0.4))
@@ -717,10 +695,18 @@ func _process(delta: float) -> void:
 		else:
 			big_label.visible = false
 		last_mood = mood
+	if mood == "bloodrage" and t > next_scream:
+		next_scream = t + 2.2
+		big_label.text = RAGE_BIG_LINES[randi() % RAGE_BIG_LINES.size()]
+		if randf() < 0.5:
+			play_sfx("rage")
+	if mood == "skycry" and t > next_wail:
+		next_wail = t + 3.0
+		big_label.text = SKY_BIG_LINES[randi() % SKY_BIG_LINES.size()]
 	if big_label.visible:
-		var pulse := 26.0 if mood == "rage" else 7.0
+		var pulse := 26.0 if mood == "bloodrage" else 7.0
 		big_label.scale = Vector2.ONE * (1.0 + 0.07 * sin(t * pulse))
-		big_label.rotation = 0.03 * sin(t * 2.0) if mood == "cry" else 0.0
+		big_label.rotation = 0.03 * sin(t * 2.0) if mood == "skycry" else 0.0
 
 	# damage numbers and target practice on his screen
 	if started and power_on and wifi_on:
@@ -800,18 +786,27 @@ func head_pos() -> Vector2:
 
 const SCREEN_RECT := Rect2(144, 451, 295, 173) # the monitor screen inside the illustrated scene, measured from a zoomed crop
 const HEAD_SRC := Rect2(552, 6, 474, 344) # his head and halo, a slice of the same art
-const KB_SRC := Rect2(436, 468, 156, 116) # his keyboard hand and forearm
-const MS_SRC := Rect2(842, 462, 148, 132) # his mouse hand and forearm
+const KB_SRC := Rect2(452, 486, 140, 98) # his keyboard hand and forearm, tight to skin and keys
+const MS_SRC := Rect2(850, 478, 140, 116) # his mouse hand and forearm
 
 func _draw() -> void:
 	var phase := day_clock / DAY_LENGTH
-	# the world is the animated clip when it loaded; otherwise the illustrated scene
-	if video_mode:
-		pass # the clip on the layer beneath is the room; only overlays get painted here
-	elif scene_tex:
-		draw_texture_rect(scene_tex, Rect2(0, 0, W, H), false)
+	# bloodrage shakes the whole world; slam beats hit every couple of seconds
+	var shake := Vector2.ZERO
+	if mood == "bloodrage":
+		var slam := 2.3 if fmod(t, 2.3) < 0.16 else 1.0
+		shake = Vector2(sin(t * 51.0) + sin(t * 37.0), sin(t * 45.0)) * 2.6 * slam
+	# the world is the illustrated scene; code paints what changes
+	if scene_tex:
+		draw_texture_rect(scene_tex, Rect2(shake.x, shake.y, W, H), false)
 	else:
 		rect(0, 0, W, H, C_WALL)
+	if mood == "bloodrage":
+		rect(0, 0, W, H, Color(0.55, 0.04, 0.02, 0.10 + 0.05 * sin(t * 9.0)))
+		rect(0, 0, W, 30, Color(0.5, 0.02, 0.01, 0.16))
+		rect(0, H - 30, W, 30, Color(0.5, 0.02, 0.01, 0.16))
+		rect(0, 0, 30, H, Color(0.5, 0.02, 0.01, 0.16))
+		rect(W - 30, 0, 30, H, Color(0.5, 0.02, 0.01, 0.16))
 	if not started:
 		rect(0, 0, W, H, Color(0.01, 0.01, 0.04, 0.80))
 		return
@@ -825,44 +820,59 @@ func _draw() -> void:
 		var covered := 148.0 * blinds_anim
 		var yy := 88.0
 		while yy < 88.0 + covered:
-			rect(299, yy, 278, 8, Color("#ccd5da"))
-			rect(299, yy + 8, 278, 2, Color(0, 0, 0, 0.18))
+			rect(299 + shake.x, yy + shake.y, 278, 8, Color("#ccd5da"))
+			rect(299 + shake.x, yy + 8 + shake.y, 278, 2, Color(0, 0, 0, 0.18))
 			yy += 11.0
-		rect(299, 88, 4, covered, Color(0, 0, 0, 0.20))
-		rect(573, 88, 4, covered, Color(0, 0, 0, 0.20))
-	# a grief puddle gathers on the desk while he cries
-	if mood == "cry" and cry_t0 > 0.0:
+		rect(299 + shake.x, 88 + shake.y, 4, covered, Color(0, 0, 0, 0.20))
+		rect(573 + shake.x, 88 + shake.y, 4, covered, Color(0, 0, 0, 0.20))
+	# god rays for the sky grief: heaven shines on him, mockingly
+	if mood == "skycry":
+		var ra := 0.05 + 0.02 * sin(t * 2.0)
+		for gi in range(3):
+			var gx := 350.0 + gi * 90.0
+			draw_colored_polygon(PackedVector2Array([Vector2(gx, 92), Vector2(gx + 34, 92), Vector2(763 + (gi - 1) * 42, 235), Vector2(763 + (gi - 1) * 42 - 26, 235)]), Color(1.0, 0.98, 0.9, ra))
+	# a grief puddle gathers on the desk while he weeps
+	if mood == "skycry" and cry_t0 > 0.0:
 		var pw := minf(30.0 + (t - cry_t0) * 6.0, 95.0)
 		draw_colored_polygon(ellipse_pts(Vector2(763 + cur_head_off.x, 608), pw, pw * 0.16), Color(0.45, 0.72, 1.0, 0.45))
 
 	# ---- he is actually gaming now: slices of the same art, shifted a few pixels ----
 	var surge := power_on and wifi_on and mood == "focused" and t < surge_until
 	cur_head_off = Vector2(sin(t * 0.9) * 1.2, sin(t * 1.3) * 1.5)
-	if mood == "cry":
-		cur_head_off.y += sin(t * 6.0) * 2.0
+	if mood == "bloodrage":
+		cur_head_off += shake
 	elif surge:
 		cur_head_off += Vector2(2.0, 3.5 + sin(t * 9.0) * 1.2)
 	elif mood == "focused":
 		cur_head_off.y += sin(t * 6.0) * 0.4
 	if scene_tex:
 		var tap := 0.0
-		if power_on and wifi_on and mood != "cry":
+		if mood == "bloodrage":
+			tap = -2.0 - absf(sin(t * 30.0)) * 4.0 # pounding the dead keyboard
+		elif power_on and wifi_on and mood != "skycry":
 			if surge:
 				tap = -absf(sin(t * 26.0)) * 3.2
 			elif fmod(t, 1.9) < 1.25:
 				tap = -absf(sin(t * 15.0)) * 2.4
-		if not video_mode:
-			draw_texture_rect_region(scene_tex, Rect2(KB_SRC.position + Vector2(0, tap), KB_SRC.size), KB_SRC)
+		if curtain_t0 > 0.0 and t - curtain_t0 < 0.18:
+			tap = 9.0 # the hiss slam
+		draw_texture_rect_region(scene_tex, Rect2(KB_SRC.position + Vector2(shake.x, tap + shake.y), KB_SRC.size), KB_SRC)
 		var m_off := Vector2(sin(t * 0.7) * 1.5, -1.2 * pow(maxf(0.0, sin(t * 2.1)), 6.0))
 		if surge:
 			m_off.x += sin(t * 13.0) * 1.0
-		if not video_mode:
-			draw_texture_rect_region(scene_tex, Rect2(MS_SRC.position + m_off, MS_SRC.size), MS_SRC)
-		# mood moves the head: rage shakes and swells, shock startles, grief heaves, a poke flinches
+		if mood == "bloodrage":
+			m_off = Vector2(sin(t * 23.0) * 4.0, -absf(sin(t * 27.0)) * 3.0)
+		if poke_t0 > 0.0 and t - poke_t0 < 0.3:
+			m_off.y -= sin((t - poke_t0) / 0.3 * PI) * 26.0 # the swat
+		draw_texture_rect_region(scene_tex, Rect2(MS_SRC.position + m_off + shake, MS_SRC.size), MS_SRC)
+		# the head rides a pivot at his neck, so moods can tilt it: skyward for the
+		# Wi-Fi grief, jittering and swollen for bloodrage, slumped for relief
 		var h_scale := 1.0
 		var h_squash := 1.0
-		if mood == "rage":
-			h_scale = 1.0 + 0.045 * sin(t * 24.0)
+		var head_rot := 0.0
+		if mood == "bloodrage":
+			h_scale = 1.06 + 0.05 * sin(t * 24.0)
+			head_rot = (sin(t * 43.0) + sin(t * 29.0)) * 0.02
 			cur_head_off.x += (sin(t * 47.0) + sin(t * 31.0)) * 1.6
 			cur_head_off.y += sin(t * 39.0) * 1.2
 		elif mood == "shock":
@@ -871,22 +881,42 @@ func _draw() -> void:
 				var ang := float(si) * PI / 4.0 + 0.4
 				var c0 := Vector2(763, 190) + cur_head_off + Vector2(cos(ang), sin(ang)) * 185.0
 				line(c0, c0 + Vector2(cos(ang), sin(ang)) * 26.0, Color(1, 1, 1, 0.7), 3)
-		elif mood == "cry":
-			var sob := pow(maxf(0.0, sin(t * 7.5)), 3.0)
-			h_squash = 1.0 - 0.035 * sob
-			cur_head_off.x += sin(t * 1.1) * 3.0
-			cur_head_off.y += 5.0 + sob * 2.0
+		elif mood == "skycry":
+			var sob2 := pow(maxf(0.0, sin(t * 7.5)), 3.0)
+			h_squash = 1.0 - 0.03 * sob2
+			head_rot = -0.09 + sin(t * 1.1) * 0.012
+			cur_head_off.y += -3.0 + sob2 * 1.5
+		elif mood == "relief":
+			h_scale = 0.985
+			head_rot = 0.03
+			cur_head_off.y += 7.0
 		elif mood == "hiss":
 			cur_head_off.x += sin(t * 40.0) * 1.5
 			cur_head_off.y += 3.0
 		if poke_t0 > 0.0 and t - poke_t0 < 0.35:
 			cur_head_off += Vector2(-1, 1) * sin((t - poke_t0) / 0.35 * PI) * 6.0
+			head_rot += sin((t - poke_t0) / 0.35 * PI) * -0.05
 		if snack_t0 > 0.0 and t - snack_t0 >= 0.45 and t - snack_t0 < 1.1:
 			cur_head_off.y += absf(sin(t * 22.0)) * 2.0 # chewing
-		var hs := HEAD_SRC.size * Vector2(h_scale, h_scale * h_squash)
-		var hpos := Vector2(HEAD_SRC.get_center().x - hs.x / 2.0, HEAD_SRC.position.y + HEAD_SRC.size.y - hs.y) + cur_head_off
-		if not video_mode:
-			draw_texture_rect_region(scene_tex, Rect2(hpos, hs), HEAD_SRC)
+			if t - snack_t0 < 0.7:
+				head_rot -= 0.05 # tipped back to catch
+		# the head is drawn as a polygon hugging the halo and beard silhouette, so
+		# scaling and tilting it never shows a rectangular seam
+		var pivot := Vector2(763, 332)
+		var hpts := PackedVector2Array()
+		var huvs := PackedVector2Array()
+		var hcols: Array[Color] = []
+		for hi in range(28):
+			var ang := TAU * float(hi) / 28.0
+			var ep := Vector2(763 + cos(ang) * 200.0, 188 + sin(ang) * 156.0)
+			if ep.y > 300.0:
+				ep.x = 763 + (ep.x - 763) * 1.03
+			hpts.append((ep - pivot) * Vector2(h_scale, h_scale * h_squash))
+			huvs.append(Vector2(ep.x / 1152.0, ep.y / 648.0))
+			hcols.append(Color(1, 1, 1))
+		draw_set_transform(pivot + cur_head_off, head_rot, Vector2.ONE)
+		draw_polygon(hpts, PackedColorArray(hcols), huvs, scene_tex)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		# the flying snack: tossed in, caught in the beard, chewed, dropped as trash
 		if snack_t0 > 0.0:
 			var sa := t - snack_t0
@@ -912,6 +942,13 @@ func _draw() -> void:
 				rect(-8, -4, 16, 7, Color(0.85, 0.25, 0.2, can_a))
 				rect(-8, -13, 16, 3, Color(0.55, 0.58, 0.62, can_a))
 				draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		# crumbs shed from the beard after a catch
+		if snack_t0 > 0.0:
+			var ca := t - snack_t0
+			if ca >= 1.1 and ca < 1.6:
+				var mouth2 := Vector2(770, 312) + cur_head_off
+				for ci in range(5):
+					circ(mouth2 + Vector2((ci - 2) * 7.0, (ca - 1.1) * 150.0 + ci * 3.0), 2.0, Color(0.55, 0.38, 0.2, 1.0 - (ca - 1.1) / 0.5))
 		if power_on and wifi_on:
 			rect(202.0 + 198.0 * boss_hp, 447, 198.0 * (1.0 - boss_hp), 9, Color(0.05, 0.02, 0.02, 0.60))
 			for f in flashes:
@@ -940,9 +977,9 @@ func _draw() -> void:
 		rect(0, 0, W, H, Color(0.03, 0.05, 0.16, 0.30 * nf))
 	# monitor states painted over the art's screen
 	if not power_on:
-		rect(SCREEN_RECT.position.x, SCREEN_RECT.position.y, SCREEN_RECT.size.x, SCREEN_RECT.size.y, Color("#05070a"))
+		rect(SCREEN_RECT.position.x + shake.x, SCREEN_RECT.position.y + shake.y, SCREEN_RECT.size.x, SCREEN_RECT.size.y, Color("#05070a"))
 		if pixel_font:
-			draw_string(pixel_font, Vector2(SCREEN_RECT.position.x, SCREEN_RECT.get_center().y + 5), "NO SIGNAL", HORIZONTAL_ALIGNMENT_CENTER, SCREEN_RECT.size.x, 13, Color("#5a6672"))
+			draw_string(pixel_font, Vector2(SCREEN_RECT.position.x + shake.x, SCREEN_RECT.get_center().y + 5 + shake.y), "NO SIGNAL", HORIZONTAL_ALIGNMENT_CENTER, SCREEN_RECT.size.x, 13, Color("#5a6672"))
 	elif not wifi_on:
 		rect(SCREEN_RECT.position.x, SCREEN_RECT.position.y, SCREEN_RECT.size.x, SCREEN_RECT.size.y, Color("#2a0606"))
 		line(SCREEN_RECT.position + Vector2(40, 25), SCREEN_RECT.position + Vector2(255, 148), C_RED, 8)
@@ -950,22 +987,22 @@ func _draw() -> void:
 		if pixel_font:
 			draw_string(pixel_font, Vector2(SCREEN_RECT.position.x, SCREEN_RECT.position.y + 165), "DISCONNECTED", HORIZONTAL_ALIGNMENT_CENTER, SCREEN_RECT.size.x, 11, C_RED)
 	# his face lives around (763, 205) in the art: a rage flush + steam off the halo
-	if mood == "rage":
-		circ(Vector2(763, 200) + cur_head_off, 150, Color(0.9, 0.25, 0.2, 0.07))
+	if mood == "bloodrage":
+		circ(Vector2(763, 200) + cur_head_off, 150, Color(0.9, 0.25, 0.2, 0.11))
 		for i in range(6):
 			var side := -1.0 if i % 2 == 0 else 1.0
 			var rise := fmod(t * 55.0 + i * 26.0, 84.0)
 			var alpha := 0.75 * (1.0 - rise / 84.0)
 			circ(Vector2(763 + side * (95 + (i % 3) * 16), 96 - rise) + cur_head_off, 13 + rise * 0.18, Color(0.92, 0.92, 0.94, alpha))
 	# tears for the meltdown, streaming from his eyes down into the beard
-	if mood == "cry":
+	if mood == "skycry":
 		for side in [-1.0, 1.0]:
 			var ex: float = 763.0 + side * 46.0 + cur_head_off.x
-			line(Vector2(ex, 216 + cur_head_off.y), Vector2(ex - side * 3.0, 332 + cur_head_off.y), Color(0.45, 0.75, 1.0, 0.6), 9)
+			line(Vector2(ex, 212 + cur_head_off.y), Vector2(ex - side * 5.0, 340 + cur_head_off.y), Color(0.45, 0.75, 1.0, 0.65), 12)
 			for k in range(3):
-				var fall := fmod(t * 190.0 + k * 44.0 + (24.0 if side > 0.0 else 0.0), 116.0)
-				circ(Vector2(ex, 222 + fall + cur_head_off.y), 6, Color(0.45, 0.75, 1.0, 0.95))
-			circ(Vector2(ex - side * 3.0, 338 + cur_head_off.y), 3.5 + sin(t * 9.0 + side) * 0.8, Color(0.45, 0.75, 1.0, 0.8))
+				var fall := fmod(t * 210.0 + k * 48.0 + (24.0 if side > 0.0 else 0.0), 128.0)
+				circ(Vector2(ex + sin(fall * 0.11 + side) * 4.0, 218 + fall + cur_head_off.y), 7, Color(0.45, 0.75, 1.0, 0.95))
+			circ(Vector2(ex - side * 5.0, 346 + cur_head_off.y), 5.0 + sin(t * 9.0 + side) * 1.0, Color(0.45, 0.75, 1.0, 0.85))
 	if not power_on:
 		rect(0, 0, W, H, Color(0.02, 0.03, 0.10, 0.30))
 
