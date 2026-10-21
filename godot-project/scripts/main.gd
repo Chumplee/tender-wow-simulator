@@ -59,6 +59,7 @@ var trash_spots: Array = []  # precomputed Vector2 pile anchors
 
 # ---------- nodes ----------
 var pixel_font: Font
+var scene_tex: Texture2D
 var ui: CanvasLayer
 var hud_label: Label
 var log_label: Label
@@ -156,6 +157,9 @@ func _ready() -> void:
 	var f = load("res://assets/fonts/PressStart2P-Regular.ttf")
 	if f is Font:
 		pixel_font = f
+	var st = load("res://assets/art/scene_focused.png")
+	if st is Texture2D:
+		scene_tex = st
 
 	_build_audio()
 	_build_ui()
@@ -210,6 +214,8 @@ func style_box(bg: Color, border: Color, bw := 2) -> StyleBoxFlat:
 	s.set_corner_radius_all(3)
 	s.content_margin_left = 6
 	s.content_margin_right = 6
+	s.content_margin_top = 5
+	s.content_margin_bottom = 5
 	return s
 
 func make_button(text: String, x: float, y: float, w: float, h: float, fn: Callable) -> Button:
@@ -276,6 +282,7 @@ func _build_ui() -> void:
 	# world labels
 	ui.add_child(make_label("BED (UNUSED)", 26, 268, 220, 20, 11, Color(1, 1, 1, 0.85)))
 	monitor_label = make_label("", 297, 392, 221, 24, 12, C_RED, HORIZONTAL_ALIGNMENT_CENTER)
+	monitor_label.visible = false # the illustrated scene paints its own screen states in _draw now
 	ui.add_child(monitor_label)
 
 	# speech bubble
@@ -634,41 +641,51 @@ func head_pos() -> Vector2:
 	p.y += sin(t * 1.4) * 1.5
 	return p
 
+const SCREEN_RECT := Rect2(144, 451, 295, 173) # the monitor screen inside the illustrated scene, measured from a zoomed crop
+
 func _draw() -> void:
 	var phase := day_clock / DAY_LENGTH
-	# room: gradient wall, baseboard, plank floor, rug
-	vgrad(0, 0, W, 478, C_WALL.lightened(0.07), C_WALL_DARK.darkened(0.05))
-	rect(0, 464, W, 14, Color("#e6ddc8"))
-	rect(0, 464, W, 3, Color(0, 0, 0, 0.18))
-	rect(0, 478, W, 170, C_FLOOR)
-	for i in range(9):
-		line(Vector2(0, 500 + i * 18), Vector2(W, 500 + i * 18), C_FLOOR_DARK, 2.0)
-	for i in range(7):
-		line(Vector2(90 + i * 165, 478), Vector2(50 + i * 165, 648), C_FLOOR_DARK, 2.0)
-	draw_colored_polygon(ellipse_pts(Vector2(590, 606), 505, 56), Color("#773838"))
-	draw_colored_polygon(ellipse_pts(Vector2(590, 606), 468, 44), Color("#87443e"))
-	draw_colored_polygon(ellipse_pts(Vector2(590, 606), 300, 24), Color("#773838"))
-
-	draw_window(phase)
-	draw_wall_decor()
-	draw_door()
-	draw_couch()
-	draw_lamp_and_table()
-	draw_chair()
-	draw_tender()
-	draw_desk()
-	draw_hands()
-	draw_router_and_strip()
-	draw_trash_pile()
-
-	# soft vignette so the room feels lit, not pasted
-	rect(0, 0, W, 22, Color(0, 0, 0, 0.05))
-	rect(0, H - 26, W, 26, Color(0, 0, 0, 0.07))
-	rect(0, 0, 20, H, Color(0, 0, 0, 0.04))
-	rect(W - 20, 0, 20, H, Color(0, 0, 0, 0.04))
-
+	# the world is the illustrated scene now; code only paints what changes
+	if scene_tex:
+		draw_texture_rect(scene_tex, Rect2(0, 0, W, H), false)
+	else:
+		rect(0, 0, W, H, C_WALL)
+	if not started:
+		rect(0, 0, W, H, Color(0.01, 0.01, 0.04, 0.80))
+		return
+	# night settles over the room
+	var nf := night_factor(phase)
+	if nf > 0.02 and power_on:
+		rect(0, 0, W, H, Color(0.03, 0.05, 0.16, 0.30 * nf))
+	# monitor states painted over the art's screen
 	if not power_on:
-		rect(0, 0, W, H, Color(0.02, 0.03, 0.10, 0.28))
+		rect(SCREEN_RECT.position.x, SCREEN_RECT.position.y, SCREEN_RECT.size.x, SCREEN_RECT.size.y, Color("#05070a"))
+		if pixel_font:
+			draw_string(pixel_font, Vector2(SCREEN_RECT.position.x, SCREEN_RECT.get_center().y + 5), "NO SIGNAL", HORIZONTAL_ALIGNMENT_CENTER, SCREEN_RECT.size.x, 13, Color("#5a6672"))
+	elif not wifi_on:
+		rect(SCREEN_RECT.position.x, SCREEN_RECT.position.y, SCREEN_RECT.size.x, SCREEN_RECT.size.y, Color("#2a0606"))
+		line(SCREEN_RECT.position + Vector2(40, 25), SCREEN_RECT.position + Vector2(255, 148), C_RED, 8)
+		line(SCREEN_RECT.position + Vector2(255, 25), SCREEN_RECT.position + Vector2(40, 148), C_RED, 8)
+		if pixel_font:
+			draw_string(pixel_font, Vector2(SCREEN_RECT.position.x, SCREEN_RECT.position.y + 165), "DISCONNECTED", HORIZONTAL_ALIGNMENT_CENTER, SCREEN_RECT.size.x, 11, C_RED)
+	# his face lives around (763, 205) in the art: a rage flush + steam off the halo
+	if mood == "rage":
+		circ(Vector2(763, 200), 150, Color(0.9, 0.25, 0.2, 0.10))
+		for i in range(6):
+			var side := -1.0 if i % 2 == 0 else 1.0
+			var rise := fmod(t * 55.0 + i * 26.0, 84.0)
+			var alpha := 0.6 * (1.0 - rise / 84.0)
+			circ(Vector2(763 + side * (95 + (i % 3) * 16), 96 - rise), 9 + rise * 0.13, Color(0.92, 0.92, 0.94, alpha))
+	# tears for the meltdown, streaming from his eyes down into the beard
+	if mood == "cry":
+		for side in [-1.0, 1.0]:
+			var ex: float = 763.0 + side * 46.0
+			line(Vector2(ex, 216), Vector2(ex - side * 3.0, 300), Color(0.45, 0.75, 1.0, 0.55), 5)
+			for k in range(3):
+				var fall := fmod(t * 150.0 + k * 40.0 + (24.0 if side > 0.0 else 0.0), 96.0)
+				circ(Vector2(ex, 222 + fall), 4.5, Color(0.45, 0.75, 1.0, 0.9))
+	if not power_on:
+		rect(0, 0, W, H, Color(0.02, 0.03, 0.10, 0.30))
 
 func draw_wall_decor() -> void:
 	# framed poster low on the left wall, tucked behind the couch:
