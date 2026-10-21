@@ -81,6 +81,9 @@ var bracket_until := 0.0
 var cast_f := 0.0
 var big_label: Label
 var last_mood := ""
+var vid_player: VideoStreamPlayer
+var video_mode := false
+var last_vid_state := ""
 var ui: CanvasLayer
 var hud_label: Label
 var log_label: Label
@@ -195,10 +198,33 @@ func _ready() -> void:
 		scene_tex = st
 
 	_build_audio()
+	_build_video()
 	_build_ui()
 	_build_start()
 	add_log("Tender has logged in. Tender is always logged in.")
 	queue_redraw()
+
+# ================= VIDEO =================
+# The room is a real animated clip now (him, actually gaming). It sits on a
+# canvas layer beneath everything; _draw paints only overlays on top of it.
+# If the clip is missing, the illustrated still and its slice tricks return.
+func _build_video() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = -1
+	add_child(layer)
+	vid_player = VideoStreamPlayer.new()
+	vid_player.set_anchors_preset(Control.PRESET_FULL_RECT)
+	vid_player.expand = true
+	vid_player.volume_db = -50.0
+	layer.add_child(vid_player)
+	var vs = load("res://assets/video/gaming.ogv")
+	if vs:
+		vid_player.stream = vs
+		video_mode = true
+		vid_player.finished.connect(func() -> void:
+			if vid_player:
+				vid_player.play())
+		vid_player.play()
 
 # ================= AUDIO =================
 func _build_audio() -> void:
@@ -654,6 +680,25 @@ func _process(delta: float) -> void:
 		elif sob_player.playing:
 			sob_player.stop()
 
+	# video direction: rage shakes the frame itself, the power cut freezes it mid-frame
+	if video_mode and vid_player:
+		var vstate := "game"
+		if mood == "cry":
+			vstate = "cry"
+		elif mood == "shock":
+			vstate = "shock"
+		elif mood == "rage":
+			vstate = "rage"
+		if vstate != last_vid_state:
+			vid_player.paused = vstate == "cry" or vstate == "shock"
+			last_vid_state = vstate
+		if mood == "rage":
+			vid_player.position = Vector2((sin(t * 47.0) + sin(t * 31.0)) * 1.8, sin(t * 39.0) * 1.4)
+		elif mood == "cry":
+			vid_player.position = Vector2(sin(t * 1.1) * 3.0, 2.0)
+		else:
+			vid_player.position = Vector2.ZERO
+
 	# big feelings: screams, wails, and one startled beat
 	if mood != last_mood:
 		if mood == "rage":
@@ -760,8 +805,10 @@ const MS_SRC := Rect2(842, 462, 148, 132) # his mouse hand and forearm
 
 func _draw() -> void:
 	var phase := day_clock / DAY_LENGTH
-	# the world is the illustrated scene now; code only paints what changes
-	if scene_tex:
+	# the world is the animated clip when it loaded; otherwise the illustrated scene
+	if video_mode:
+		pass # the clip on the layer beneath is the room; only overlays get painted here
+	elif scene_tex:
 		draw_texture_rect(scene_tex, Rect2(0, 0, W, H), false)
 	else:
 		rect(0, 0, W, H, C_WALL)
@@ -804,11 +851,13 @@ func _draw() -> void:
 				tap = -absf(sin(t * 26.0)) * 3.2
 			elif fmod(t, 1.9) < 1.25:
 				tap = -absf(sin(t * 15.0)) * 2.4
-		draw_texture_rect_region(scene_tex, Rect2(KB_SRC.position + Vector2(0, tap), KB_SRC.size), KB_SRC)
+		if not video_mode:
+			draw_texture_rect_region(scene_tex, Rect2(KB_SRC.position + Vector2(0, tap), KB_SRC.size), KB_SRC)
 		var m_off := Vector2(sin(t * 0.7) * 1.5, -1.2 * pow(maxf(0.0, sin(t * 2.1)), 6.0))
 		if surge:
 			m_off.x += sin(t * 13.0) * 1.0
-		draw_texture_rect_region(scene_tex, Rect2(MS_SRC.position + m_off, MS_SRC.size), MS_SRC)
+		if not video_mode:
+			draw_texture_rect_region(scene_tex, Rect2(MS_SRC.position + m_off, MS_SRC.size), MS_SRC)
 		# mood moves the head: rage shakes and swells, shock startles, grief heaves, a poke flinches
 		var h_scale := 1.0
 		var h_squash := 1.0
@@ -836,7 +885,8 @@ func _draw() -> void:
 			cur_head_off.y += absf(sin(t * 22.0)) * 2.0 # chewing
 		var hs := HEAD_SRC.size * Vector2(h_scale, h_scale * h_squash)
 		var hpos := Vector2(HEAD_SRC.get_center().x - hs.x / 2.0, HEAD_SRC.position.y + HEAD_SRC.size.y - hs.y) + cur_head_off
-		draw_texture_rect_region(scene_tex, Rect2(hpos, hs), HEAD_SRC)
+		if not video_mode:
+			draw_texture_rect_region(scene_tex, Rect2(hpos, hs), HEAD_SRC)
 		# the flying snack: tossed in, caught in the beard, chewed, dropped as trash
 		if snack_t0 > 0.0:
 			var sa := t - snack_t0
