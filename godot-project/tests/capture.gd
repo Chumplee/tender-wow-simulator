@@ -24,6 +24,8 @@ func _init() -> void:
 	await wait_frames(60)
 	await snap(game, "02_playing")
 	game.toggle_wifi()
+	game._process(0.1) # register the mood change so the tear clock starts
+	game._process(5.5) # let the tear flood rise
 	await wait_frames(40)
 	await snap(game, "03_wifi_rage")
 	game.toggle_plug()
@@ -47,11 +49,14 @@ func _init() -> void:
 	game.toggle_curtains()
 	await wait_frames(22)
 	await snap(game, "06_blinds_slamming")
-	# the flying snack, mid-air and mid-chew
+	# the flying snacks, mid-air and mid-chew (force two kinds for the camera)
 	game.give_snack()
+	game.snack_kind = "burger"
 	await wait_frames(14)
 	await snap(game, "07_snack_fly")
-	await wait_frames(30)
+	game.give_snack()
+	game.snack_kind = "donut"
+	await wait_frames(44)
 	await snap(game, "08_snack_chew")
 	print("CAPTURE DONE")
 	quit(0)

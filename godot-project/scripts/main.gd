@@ -88,6 +88,8 @@ var last_mood := ""
 var curtain_t0 := -10.0
 var next_scream := 0.0
 var next_wail := 0.0
+var snack_kind := "cola"
+const SNACK_KINDS := ["cola", "chipbag", "donut", "burger"]
 var ui: CanvasLayer
 var hud_label: Label
 var log_label: Label
@@ -543,6 +545,7 @@ func give_snack() -> void:
 	snacks += 1
 	trash += 1
 	snack_t0 = t
+	snack_kind = SNACK_KINDS[randi() % SNACK_KINDS.size()]
 	play_sfx("snack")
 	show_bubble(SNACK_LINES[randi() % SNACK_LINES.size()], 2.8)
 	if snacks % 5 == 0:
@@ -828,6 +831,33 @@ const HEAD_SRC := Rect2(552, 6, 474, 344) # his head and halo, a slice of the sa
 const KB_SRC := Rect2(452, 486, 140, 98) # his keyboard hand and forearm, tight to skin and keys
 const MS_SRC := Rect2(850, 478, 140, 116) # his mouse hand and forearm
 
+# the snack arsenal: big, unmistakable, and drawn around a local origin
+func draw_snack_shape(kind: String, center: Vector2, sc: float, rot: float, alpha: float) -> void:
+	draw_set_transform(center, rot, Vector2.ONE)
+	match kind:
+		"cola":
+			rect(-15 * sc, -23 * sc, 30 * sc, 46 * sc, Color(0.85, 0.16, 0.12, alpha))
+			rect(-15 * sc, -23 * sc, 30 * sc, 8 * sc, Color(0.85, 0.87, 0.9, alpha))
+			rect(-15 * sc, 15 * sc, 30 * sc, 8 * sc, Color(0.85, 0.87, 0.9, alpha))
+			rect(-15 * sc, -3 * sc, 30 * sc, 7 * sc, Color(1, 1, 1, 0.85 * alpha))
+		"chipbag":
+			draw_colored_polygon(PackedVector2Array([Vector2(-24, -18) * sc, Vector2(24, -18) * sc, Vector2(20, 20) * sc, Vector2(-20, 20) * sc]), Color(0.98, 0.55, 0.1, alpha))
+			rect(-24 * sc, -21 * sc, 48 * sc, 6 * sc, Color(0.9, 0.35, 0.05, alpha))
+			rect(-24 * sc, 15 * sc, 48 * sc, 6 * sc, Color(0.9, 0.35, 0.05, alpha))
+			circ(Vector2(0, 1), 10 * sc, Color(1, 0.85, 0.3, alpha))
+		"donut":
+			circ(Vector2.ZERO, 24 * sc, Color(0.98, 0.55, 0.7, alpha))
+			circ(Vector2.ZERO, 15 * sc, Color(0.93, 0.72, 0.47, alpha))
+			circ(Vector2.ZERO, 7 * sc, Color(0.13, 0.1, 0.09, alpha))
+			for sp in [Vector2(-10, -8), Vector2(6, -13), Vector2(12, 4), Vector2(-13, 7), Vector2(1, 12)]:
+				rect(sp.x * sc - 2, sp.y * sc - 1, 4, 2, Color(0.4, 0.9, 1.0, alpha))
+		"burger":
+			rect(-26 * sc, -17 * sc, 52 * sc, 13 * sc, Color(0.93, 0.68, 0.38, alpha))
+			rect(-27 * sc, -4 * sc, 54 * sc, 5 * sc, Color(0.45, 0.75, 0.3, alpha))
+			rect(-25 * sc, 1 * sc, 50 * sc, 7 * sc, Color(0.45, 0.25, 0.12, alpha))
+			rect(-26 * sc, 8 * sc, 52 * sc, 10 * sc, Color(0.93, 0.68, 0.38, alpha))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
 func _draw() -> void:
 	var phase := day_clock / DAY_LENGTH
 	# bloodrage shakes the whole world; slam beats hit every couple of seconds
@@ -861,19 +891,17 @@ func _draw() -> void:
 		var beam_a := 0.055 * (1.0 - blinds_anim / 0.35)
 		if mood == "hiss":
 			beam_a = 0.13
-		draw_colored_polygon(PackedVector2Array([Vector2(312, 236), Vector2(568, 236), Vector2(770, 480), Vector2(430, 480)]), Color(1.0, 0.95, 0.75, beam_a))
+		draw_colored_polygon(PackedVector2Array([Vector2(310, 228), Vector2(560, 228), Vector2(770, 480), Vector2(430, 480)]), Color(1.0, 0.95, 0.75, beam_a))
+	# slats fitted to the measured glass: x 300..568, y 85..228
 	if blinds_anim > 0.01:
-		var covered := 148.0 * blinds_anim
-		var yy := 88.0
-		while yy < 88.0 + covered:
-			rect(299 + shake.x, yy + shake.y, 278, 8, Color("#ccd5da"))
-			rect(299 + shake.x, yy + 8 + shake.y, 278, 2, Color(0, 0, 0, 0.18))
+		var covered := 143.0 * blinds_anim
+		var yy := 85.0
+		while yy < 85.0 + covered:
+			rect(300 + shake.x, yy + shake.y, 268, 8, Color("#ccd5da"))
+			rect(300 + shake.x, yy + 8 + shake.y, 268, 2, Color(0, 0, 0, 0.18))
 			yy += 11.0
-		rect(299 + shake.x, 88 + shake.y, 4, covered, Color(0, 0, 0, 0.20))
-		rect(573 + shake.x, 88 + shake.y, 4, covered, Color(0, 0, 0, 0.20))
-	# his hair hangs in front of the blinds, never behind them: repaint his strip
-	if started and cur_tex:
-		draw_texture_rect_region(cur_tex, Rect2(538, 80, 47, 262), Rect2(538, 80, 47, 262))
+		rect(304 + shake.x, 85 + shake.y, 3, covered, Color(0, 0, 0, 0.20))
+		rect(561 + shake.x, 85 + shake.y, 3, covered, Color(0, 0, 0, 0.20))
 	# god rays for the sky grief: heaven shines on him, mockingly
 	if mood == "skycry":
 		var ra := 0.05 + 0.02 * sin(t * 2.0)
@@ -977,10 +1005,12 @@ func _draw() -> void:
 				var can_pos := mouth
 				var can_rot := 0.0
 				var can_a := 1.0
+				var can_sc := 1.0
 				if sa < 0.45:
 					var ff := sa / 0.45
 					can_pos = Vector2(lerpf(1010.0, mouth.x, ff), lerpf(650.0, mouth.y, ff) - sin(ff * PI) * 120.0)
 					can_rot = ff * 9.0
+					can_sc = 0.75 + 0.25 * ff
 				elif sa < 1.1:
 					can_pos = mouth + Vector2(6, 10)
 					can_rot = 0.6
@@ -989,11 +1019,7 @@ func _draw() -> void:
 					can_pos = Vector2(lerpf(mouth.x, 905.0, f2), lerpf(mouth.y, 605.0, f2 * f2))
 					can_rot = 2.2
 					can_a = 1.0 - f2
-				draw_set_transform(can_pos, can_rot, Vector2.ONE)
-				rect(-8, -13, 16, 26, Color(0.75, 0.78, 0.82, can_a))
-				rect(-8, -4, 16, 7, Color(0.85, 0.25, 0.2, can_a))
-				rect(-8, -13, 16, 3, Color(0.55, 0.58, 0.62, can_a))
-				draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+				draw_snack_shape(snack_kind, can_pos, can_sc, can_rot, can_a)
 		# crumbs shed from the beard after a catch
 		if snack_t0 > 0.0:
 			var ca := t - snack_t0
@@ -1044,6 +1070,35 @@ func _draw() -> void:
 		if pixel_font:
 			draw_string(pixel_font, Vector2(SCREEN_RECT.position.x, SCREEN_RECT.position.y + 165), "DISCONNECTED", HORIZONTAL_ALIGNMENT_CENTER, SCREEN_RECT.size.x, 11, C_RED)
 	# his face lives around (763, 205) in the art: a rage flush + steam off the halo
+	# the blue world's grief made literal: his tears are flooding the room
+	if mood == "skycry" and cry_t0 > 0.0:
+		var el := t - cry_t0
+		var rise := clampf(el / 9.0, 0.0, 1.0) * 150.0 + clampf((el - 9.0) / 30.0, 0.0, 1.0) * 90.0
+		if rise > 4.0:
+			var wy := 648.0 - rise
+			var wpts := PackedVector2Array()
+			for wx in range(0, 1153, 48):
+				wpts.append(Vector2(wx, wy + sin(t * 2.2 + wx * 0.02) * 3.0))
+			wpts.append(Vector2(1152, 648))
+			wpts.append(Vector2(0, 648))
+			draw_colored_polygon(wpts, Color(0.25, 0.5, 0.95, 0.35))
+			for wx in range(0, 1152, 48):
+				line(Vector2(wx, wy + sin(t * 2.2 + wx * 0.02) * 3.0), Vector2(wx + 48, wy + sin(t * 2.2 + (wx + 48) * 0.02) * 3.0), Color(0.7, 0.88, 1.0, 0.65), 3)
+			# snack cans ride the flood like little boats of shame
+			for bi in range(3):
+				var bx := 180.0 + bi * 330.0 + sin(t * 0.7 + bi * 2.1) * 12.0
+				var by := wy + sin(t * 2.2 + bx * 0.02) * 3.0 + sin(t * 3.1 + bi * 1.7) * 2.5 - 10.0
+				draw_snack_shape("cola", Vector2(bx, by), 0.85, sin(t * 1.3 + bi) * 0.18, 0.95)
+			# his own tear streams splash where they land
+			if rise > 40.0:
+				for sx in [717.0, 809.0]:
+					circ(Vector2(sx, wy - 2.0), 4.0 + sin(t * 10.0 + sx) * 1.2, Color(0.8, 0.92, 1.0, 0.8))
+			# bubbles rising through the grief
+			if rise > 24.0:
+				for bu in range(6):
+					var bub_x := 120.0 + bu * 170.0 + sin(t + bu) * 8.0
+					var bub_y := 648.0 - fmod(t * 26.0 + bu * 61.0, rise - 14.0)
+					circ(Vector2(bub_x, bub_y), 3.0, Color(0.8, 0.92, 1.0, 0.45))
 	if mood == "bloodrage":
 		circ(Vector2(763, 200) + cur_head_off, 150, Color(0.9, 0.25, 0.2, 0.11))
 		for i in range(6):
