@@ -1113,7 +1113,7 @@ func _draw() -> void:
 				draw_snack_shape("cola", Vector2(bx, by), 0.85, sin(t * 1.3 + bi) * 0.18, 0.95)
 			# his own tear streams splash where they land
 			if rise > 40.0:
-				var splash_xs := [711.0, 793.0]
+				var splash_xs := [711.0, 787.0]
 				for sx in splash_xs:
 					circ(Vector2(sx, wy - 2.0), 4.0 + sin(t * 10.0 + sx) * 1.2, Color(0.8, 0.92, 1.0, 0.8))
 			# bubbles rising through the grief
@@ -1147,7 +1147,7 @@ func _draw() -> void:
 		var hr := -0.09 + sin(t * 1.1) * 0.012
 		var piv := Vector2(763, 332)
 		for side in [-1.0, 1.0]:
-			var art_eye := Vector2(763.0 + side * 44.0, 250.0)
+			var art_eye := Vector2(763.0 + side * (38.0 if side > 0.0 else 44.0), 244.0 if side < 0.0 else 250.0)
 			var loc := (art_eye - piv) * Vector2(1.0, sq)
 			var eye := piv + cur_head_off + loc.rotated(hr)
 			var fall_len := 648.0 - eye.y
