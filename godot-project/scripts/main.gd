@@ -60,6 +60,10 @@ var trash_spots: Array = []  # precomputed Vector2 pile anchors
 # ---------- nodes ----------
 var pixel_font: Font
 var scene_tex: Texture2D
+var red_tex: Texture2D
+var dusk_tex: Texture2D
+var vid_player: VideoStreamPlayer
+var video_mode := false
 # animation life: layered slices of the illustrated scene, moved a few pixels to game with
 var surge_until := -10.0
 var next_surge := 6.0
@@ -215,12 +219,40 @@ func _ready() -> void:
 	var st = load("res://assets/art/scene_focused.png")
 	if st is Texture2D:
 		scene_tex = st
+	var rt = load("res://assets/art/scene_red.png")
+	if rt is Texture2D:
+		red_tex = rt
+	var dt = load("res://assets/art/scene_dusk.png")
+	if dt is Texture2D:
+		dusk_tex = dt
 
 	_build_audio()
+	_build_video()
 	_build_ui()
 	_build_start()
 	add_log("Tender has logged in. Tender is always logged in.")
 	queue_redraw()
+
+# ================= VIDEO =================
+# The idle world is real footage of him gaming (the clip he approved). It lives
+# on a canvas layer beneath everything; the graded action states hide it.
+func _build_video() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = -1
+	add_child(layer)
+	vid_player = VideoStreamPlayer.new()
+	vid_player.set_anchors_preset(Control.PRESET_FULL_RECT)
+	vid_player.expand = true
+	vid_player.volume_db = -50.0
+	layer.add_child(vid_player)
+	var vs = load("res://assets/video/gaming.ogv")
+	if vs:
+		vid_player.stream = vs
+		video_mode = true
+		vid_player.finished.connect(func() -> void:
+			if vid_player:
+				vid_player.play())
+		vid_player.play()
 
 # ================= AUDIO =================
 func _build_audio() -> void:
@@ -667,6 +699,12 @@ func _process(delta: float) -> void:
 	var b_target := 0.0 if blinds_open else 1.0
 	blinds_anim = move_toward(blinds_anim, b_target, delta * (4.0 if mood == "hiss" else 1.6))
 
+	# the clip runs the idle world; the graded action states hide and pause it
+	if vid_player:
+		var show_clip := mood != "shock" and mood != "bloodrage" and mood != "skycry"
+		vid_player.visible = show_clip
+		vid_player.paused = not show_clip
+
 	# the sob track runs while he weeps at the heavens over the dead Wi-Fi
 	if sob_player and sob_player.stream:
 		if mood == "skycry" and not muted:
@@ -796,9 +834,19 @@ func _draw() -> void:
 	if mood == "bloodrage":
 		var slam := 2.3 if fmod(t, 2.3) < 0.16 else 1.0
 		shake = Vector2(sin(t * 51.0) + sin(t * 37.0), sin(t * 45.0)) * 2.6 * slam
-	# the world is the illustrated scene; code paints what changes
-	if scene_tex:
-		draw_texture_rect(scene_tex, Rect2(shake.x, shake.y, W, H), false)
+	# three worlds: the living clip at idle, a blood red render for the meltdown,
+	# a dusk blue render for the sky grief; code paints what changes in each
+	var in_clip := video_mode and mood != "shock" and mood != "bloodrage" and mood != "skycry"
+	var slices_on := not in_clip
+	var cur_tex: Texture2D = scene_tex
+	if mood == "shock" or mood == "bloodrage":
+		cur_tex = red_tex if red_tex else scene_tex
+	elif mood == "skycry":
+		cur_tex = dusk_tex if dusk_tex else scene_tex
+	if in_clip:
+		pass # the footage beneath is the room; overlays only
+	elif cur_tex:
+		draw_texture_rect(cur_tex, Rect2(shake.x, shake.y, W, H), false)
 	else:
 		rect(0, 0, W, H, C_WALL)
 	if mood == "bloodrage":
@@ -845,7 +893,7 @@ func _draw() -> void:
 		cur_head_off += Vector2(2.0, 3.5 + sin(t * 9.0) * 1.2)
 	elif mood == "focused":
 		cur_head_off.y += sin(t * 6.0) * 0.4
-	if scene_tex:
+	if cur_tex:
 		var tap := 0.0
 		if mood == "bloodrage":
 			tap = -2.0 - absf(sin(t * 30.0)) * 4.0 # pounding the dead keyboard
@@ -856,7 +904,8 @@ func _draw() -> void:
 				tap = -absf(sin(t * 15.0)) * 2.4
 		if curtain_t0 > 0.0 and t - curtain_t0 < 0.18:
 			tap = 9.0 # the hiss slam
-		draw_texture_rect_region(scene_tex, Rect2(KB_SRC.position + Vector2(shake.x, tap + shake.y), KB_SRC.size), KB_SRC)
+		if slices_on:
+			draw_texture_rect_region(cur_tex, Rect2(KB_SRC.position + Vector2(shake.x, tap + shake.y), KB_SRC.size), KB_SRC)
 		var m_off := Vector2(sin(t * 0.7) * 1.5, -1.2 * pow(maxf(0.0, sin(t * 2.1)), 6.0))
 		if surge:
 			m_off.x += sin(t * 13.0) * 1.0
@@ -864,7 +913,8 @@ func _draw() -> void:
 			m_off = Vector2(sin(t * 23.0) * 4.0, -absf(sin(t * 27.0)) * 3.0)
 		if poke_t0 > 0.0 and t - poke_t0 < 0.3:
 			m_off.y -= sin((t - poke_t0) / 0.3 * PI) * 26.0 # the swat
-		draw_texture_rect_region(scene_tex, Rect2(MS_SRC.position + m_off + shake, MS_SRC.size), MS_SRC)
+		if slices_on:
+			draw_texture_rect_region(cur_tex, Rect2(MS_SRC.position + m_off + shake, MS_SRC.size), MS_SRC)
 		# the head rides a pivot at his neck, so moods can tilt it: skyward for the
 		# Wi-Fi grief, jittering and swollen for bloodrage, slumped for relief
 		var h_scale := 1.0
@@ -914,9 +964,10 @@ func _draw() -> void:
 			hpts.append((ep - pivot) * Vector2(h_scale, h_scale * h_squash))
 			huvs.append(Vector2(ep.x / 1152.0, ep.y / 648.0))
 			hcols.append(Color(1, 1, 1))
-		draw_set_transform(pivot + cur_head_off, head_rot, Vector2.ONE)
-		draw_polygon(hpts, PackedColorArray(hcols), huvs, scene_tex)
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		if slices_on:
+			draw_set_transform(pivot + cur_head_off, head_rot, Vector2.ONE)
+			draw_polygon(hpts, PackedColorArray(hcols), huvs, cur_tex)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		# the flying snack: tossed in, caught in the beard, chewed, dropped as trash
 		if snack_t0 > 0.0:
 			var sa := t - snack_t0
