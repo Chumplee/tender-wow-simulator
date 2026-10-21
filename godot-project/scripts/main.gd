@@ -1095,7 +1095,7 @@ func _draw() -> void:
 				draw_snack_shape("cola", Vector2(bx, by), 0.85, sin(t * 1.3 + bi) * 0.18, 0.95)
 			# his own tear streams splash where they land
 			if rise > 40.0:
-				var splash_xs := [717.0, 809.0]
+				var splash_xs := [701.0, 803.0]
 				for sx in splash_xs:
 					circ(Vector2(sx, wy - 2.0), 4.0 + sin(t * 10.0 + sx) * 1.2, Color(0.8, 0.92, 1.0, 0.8))
 			# bubbles rising through the grief
@@ -1116,15 +1116,24 @@ func _draw() -> void:
 		for side in [-1.0, 1.0]:
 			var ex: float = 763.0 + side * 46.0 + cur_head_off.x
 			line(Vector2(ex, 212 + cur_head_off.y), Vector2(ex - side * 5.0, 340 + cur_head_off.y), Color(0.45, 0.75, 1.0, 0.0), 1)
-	# tears for the meltdown, streaming from his eyes down into the beard
+	# tears for the meltdown, streaming from his eyes down into the beard.
+	# the anchors run through the head's own transform (neck pivot, skyward
+	# tilt, sob squash), so the streams start on his actual eyes, not on
+	# where the eyes sit in the flat picture
 	if mood == "skycry":
+		var sob3 := pow(maxf(0.0, sin(t * 7.5)), 3.0)
+		var sq := 1.0 - 0.03 * sob3
+		var hr := -0.09 + sin(t * 1.1) * 0.012
+		var piv := Vector2(763, 332)
 		for side in [-1.0, 1.0]:
-			var ex: float = 763.0 + side * 46.0 + cur_head_off.x
-			line(Vector2(ex, 212 + cur_head_off.y), Vector2(ex - side * 5.0, 340 + cur_head_off.y), Color(0.45, 0.75, 1.0, 0.65), 12)
+			var art_eye := Vector2(763.0 + side * 46.0, 210.0)
+			var loc := (art_eye - piv) * Vector2(1.0, sq)
+			var eye := piv + cur_head_off + loc.rotated(hr)
+			line(eye, eye + Vector2(-side * 5.0, 130.0), Color(0.45, 0.75, 1.0, 0.65), 12)
 			for k in range(3):
 				var fall := fmod(t * 210.0 + k * 48.0 + (24.0 if side > 0.0 else 0.0), 128.0)
-				circ(Vector2(ex + sin(fall * 0.11 + side) * 4.0, 218 + fall + cur_head_off.y), 7, Color(0.45, 0.75, 1.0, 0.95))
-			circ(Vector2(ex - side * 5.0, 346 + cur_head_off.y), 5.0 + sin(t * 9.0 + side) * 1.0, Color(0.45, 0.75, 1.0, 0.85))
+				circ(eye + Vector2(sin(fall * 0.11 + side) * 4.0 - side * 5.0 * fall / 128.0, 6.0 + fall), 7, Color(0.45, 0.75, 1.0, 0.95))
+			circ(eye + Vector2(-side * 5.0, 136.0), 5.0 + sin(t * 9.0 + side) * 1.0, Color(0.45, 0.75, 1.0, 0.85))
 	if not power_on:
 		rect(0, 0, W, H, Color(0.02, 0.03, 0.10, 0.30))
 
