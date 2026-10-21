@@ -62,6 +62,7 @@ var pixel_font: Font
 var scene_tex: Texture2D
 var red_tex: Texture2D
 var dusk_tex: Texture2D
+var skycry_frames: Array[Texture2D] = []
 var vid_player: VideoStreamPlayer
 var video_mode := false
 # animation life: layered slices of the illustrated scene, moved a few pixels to game with
@@ -227,6 +228,12 @@ func _ready() -> void:
 	var dt = load("res://assets/art/scene_dusk.png")
 	if dt is Texture2D:
 		dusk_tex = dt
+	for fi in range(12):
+		var fp := "res://assets/anim_skycry/f%02d.jpg" % fi
+		if ResourceLoader.exists(fp):
+			var ft = load(fp)
+			if ft is Texture2D:
+				skycry_frames.append(ft)
 
 	_build_audio()
 	_build_video()
@@ -703,26 +710,14 @@ func _process(delta: float) -> void:
 	var b_target := 0.0 if blinds_open else 1.0
 	blinds_anim = move_toward(blinds_anim, b_target, delta * (4.0 if mood == "hiss" else 1.6))
 
-	# the footage runs the monitor at idle and the whole blue world when he grieves:
-	# there it is graded storm blue and driven like a performance, trembling,
-	# lunging at the ceiling on a wail cycle, slumping between wails
+	# the footage runs only the monitor; the big emotions hide it entirely
 	if vid_player:
-		var show_clip := mood != "shock" and mood != "bloodrage"
+		var show_clip := mood != "shock" and mood != "bloodrage" and mood != "skycry"
 		vid_player.visible = show_clip
 		vid_player.paused = not show_clip
-		if mood == "skycry":
-			vid_player.modulate = Color(0.5, 0.68, 1.25)
-			var wel := maxf(0.0, t - cry_t0) if cry_t0 > 0.0 else 0.0
-			var cyc := fmod(wel, 4.6)
-			var env := sin(cyc / 1.1 * PI) if cyc < 1.1 else 0.0
-			var slump := 1.0 if cyc >= 1.1 and cyc < 2.6 else 0.0
-			var tremble := 1.0 + env * 2.2
-			vid_player.scale = Vector2.ONE * (1.0 + 0.07 * env - 0.015 * slump)
-			vid_player.position = Vector2(sin(t * 41.0) * 1.6 * tremble, -7.0 * env + 5.0 * slump + sin(t * 37.0) * 1.3 * tremble)
-		else:
-			vid_player.modulate = Color.WHITE
-			vid_player.position = Vector2.ZERO
-			vid_player.scale = Vector2.ONE
+		vid_player.modulate = Color.WHITE
+		vid_player.position = Vector2.ZERO
+		vid_player.scale = Vector2.ONE
 
 	# the sob track runs while he weeps at the heavens over the dead Wi-Fi
 	if sob_player and sob_player.stream:
@@ -883,7 +878,7 @@ func _draw() -> void:
 		shake = Vector2(sin(t * 51.0) + sin(t * 37.0), sin(t * 45.0)) * 2.6 * slam
 	# the room is the still illustration again (his first, favorite idle); only the
 	# game window is alive. The graded renders still own the two big emotions.
-	var clip_world := mood == "skycry" and video_mode
+	var clip_world := mood == "skycry" and skycry_frames.size() > 0
 	var slices_on := not clip_world
 	var cur_tex: Texture2D = scene_tex
 	if mood == "shock" or mood == "bloodrage":
@@ -891,13 +886,16 @@ func _draw() -> void:
 	elif mood == "skycry":
 		cur_tex = dusk_tex if dusk_tex else scene_tex
 	if clip_world:
-		pass # the storm-blue footage underneath is the room now
+		# the blue world's own filmstrip: a 12-frame cutout freak-out, his alone
+		var fel := t - cry_t0 if cry_t0 > 0.0 else t
+		var fidx := int(fmod(maxf(fel, 0.0), 1.2) / 0.1) % skycry_frames.size()
+		draw_texture_rect(skycry_frames[fidx], Rect2(0, 0, W, H), false)
 	elif cur_tex:
 		draw_texture_rect(cur_tex, Rect2(shake.x, shake.y, W, H), false)
 	else:
 		rect(0, 0, W, H, C_WALL)
 	# lightning cracks over the window just before each wail
-	if mood == "skycry" and cry_t0 > 0.0:
+	if mood == "skycry" and cry_t0 > 0.0 and not clip_world:
 		var lcyc := fmod(t - cry_t0, 4.6)
 		if (lcyc > 2.9 and lcyc < 3.0) or (lcyc > 3.15 and lcyc < 3.24):
 			rect(300, 85, 268, 143, Color(0.85, 0.92, 1.0, 0.45))
@@ -934,7 +932,7 @@ func _draw() -> void:
 			var gx := 350.0 + gi * 90.0
 			draw_colored_polygon(PackedVector2Array([Vector2(gx, 92), Vector2(gx + 34, 92), Vector2(763 + (gi - 1) * 42, 235), Vector2(763 + (gi - 1) * 42 - 26, 235)]), Color(1.0, 0.98, 0.9, ra))
 	# a grief puddle gathers on the desk while he weeps
-	if mood == "skycry" and cry_t0 > 0.0:
+	if mood == "skycry" and cry_t0 > 0.0 and not clip_world:
 		var pw := minf(30.0 + (t - cry_t0) * 6.0, 95.0)
 		draw_colored_polygon(ellipse_pts(Vector2(763 + cur_head_off.x, 608), pw, pw * 0.16), Color(0.45, 0.72, 1.0, 0.45))
 
@@ -1088,13 +1086,12 @@ func _draw() -> void:
 		rect(SCREEN_RECT.position.x + shake.x, SCREEN_RECT.position.y + shake.y, SCREEN_RECT.size.x, SCREEN_RECT.size.y, Color("#05070a"))
 		if pixel_font:
 			draw_string(pixel_font, Vector2(SCREEN_RECT.position.x + shake.x, SCREEN_RECT.get_center().y + 5 + shake.y), "NO SIGNAL", HORIZONTAL_ALIGNMENT_CENTER, SCREEN_RECT.size.x, 13, Color("#5a6672"))
-	elif not wifi_on:
-		var mrect := Rect2(130, 426, 340, 208) if clip_world else SCREEN_RECT
-		rect(mrect.position.x, mrect.position.y, mrect.size.x, mrect.size.y, Color("#2a0606"))
-		line(mrect.position + Vector2(40, 25), mrect.position + Vector2(mrect.size.x - 40, mrect.size.y - 25), C_RED, 8)
-		line(mrect.position + Vector2(mrect.size.x - 40, 25), mrect.position + Vector2(40, mrect.size.y - 25), C_RED, 8)
+	elif not wifi_on and not clip_world:
+		rect(SCREEN_RECT.position.x, SCREEN_RECT.position.y, SCREEN_RECT.size.x, SCREEN_RECT.size.y, Color("#2a0606"))
+		line(SCREEN_RECT.position + Vector2(40, 25), SCREEN_RECT.position + Vector2(255, 148), C_RED, 8)
+		line(SCREEN_RECT.position + Vector2(255, 25), SCREEN_RECT.position + Vector2(40, 148), C_RED, 8)
 		if pixel_font:
-			draw_string(pixel_font, Vector2(mrect.position.x, mrect.position.y + mrect.size.y - 8), "DISCONNECTED", HORIZONTAL_ALIGNMENT_CENTER, mrect.size.x, 11, C_RED)
+			draw_string(pixel_font, Vector2(SCREEN_RECT.position.x, SCREEN_RECT.position.y + 165), "DISCONNECTED", HORIZONTAL_ALIGNMENT_CENTER, SCREEN_RECT.size.x, 11, C_RED)
 	# his face lives around (763, 205) in the art: a rage flush + steam off the halo
 	# the blue world's grief made literal: his tears are flooding the room
 	if mood == "skycry" and cry_t0 > 0.0:
@@ -1117,7 +1114,8 @@ func _draw() -> void:
 				draw_snack_shape("cola", Vector2(bx, by), 0.85, sin(t * 1.3 + bi) * 0.18, 0.95)
 			# his own tear streams splash where they land
 			if rise > 40.0:
-				for sx in [717.0, 809.0]:
+				var splash_xs := [500.0, 640.0] if clip_world else [717.0, 809.0]
+				for sx in splash_xs:
 					circ(Vector2(sx, wy - 2.0), 4.0 + sin(t * 10.0 + sx) * 1.2, Color(0.8, 0.92, 1.0, 0.8))
 			# bubbles rising through the grief
 			if rise > 24.0:
