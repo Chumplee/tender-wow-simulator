@@ -78,6 +78,7 @@ var snack_t0 := -10.0
 var poke_t0 := -10.0
 var sob_player: AudioStreamPlayer
 var cry_t0 := -10.0
+var blackout_t0 := 0.0 # when the flood killed the PC (smoke, then the reset)
 var dmg_numbers: Array = []
 var next_dmg := 0.0
 var bracket_pos := Vector2(250, 520)
@@ -501,7 +502,8 @@ func toggle_wifi() -> void:
 		meltdowns += 1
 		mood = "skycry"
 		mood_time = 600.0
-		offline_timer = 10.0
+		offline_timer = 26.0
+		blackout_t0 = 0.0
 		show_bubble(SKY_BUBBLE_LINES[randi() % SKY_BUBBLE_LINES.size()], 4.0)
 		add_log("You killed the Wi-Fi. He turned his face to the heavens and wept.")
 	else:
@@ -511,6 +513,7 @@ func toggle_wifi() -> void:
 func restore_wifi(log_text: String) -> void:
 	wifi_on = true
 	offline_timer = 0.0
+	blackout_t0 = 0.0
 	if mood == "skycry":
 		mood = "focused"
 	show_bubble("and we're back. i was calm the whole time.", 3.0)
@@ -646,6 +649,16 @@ func _process(delta: float) -> void:
 				add_log("He closed the blinds himself. At record speed.")
 			elif mood == "relief":
 				mood = "focused"
+
+	# the blue arc: when the flood reaches the PC the power dies in smoke,
+	# and a few seconds later the whole thing resets itself
+	if mood == "skycry" and cry_t0 > 0.0:
+		var bel := t - cry_t0
+		var brise := 648.0 * pow(clampf(bel / 26.0, 0.0, 1.0), 1.25)
+		if blackout_t0 <= 0.0 and brise >= 218.0:
+			blackout_t0 = t
+		if blackout_t0 > 0.0 and t - blackout_t0 >= 5.0:
+			restore_wifi("The flood took the PC. Everything resets. He accepts no responsibility.")
 
 	if not wifi_on and power_on and offline_timer > 0.0:
 		offline_timer -= delta
@@ -1068,16 +1081,21 @@ func _draw() -> void:
 		if pixel_font:
 			draw_string(pixel_font, Vector2(SCREEN_RECT.position.x + shake.x, SCREEN_RECT.get_center().y + 5 + shake.y), "NO SIGNAL", HORIZONTAL_ALIGNMENT_CENTER, SCREEN_RECT.size.x, 13, Color("#5a6672"))
 	elif not wifi_on:
-		rect(SCREEN_RECT.position.x, SCREEN_RECT.position.y, SCREEN_RECT.size.x, SCREEN_RECT.size.y, Color("#2a0606"))
-		line(SCREEN_RECT.position + Vector2(40, 25), SCREEN_RECT.position + Vector2(255, 148), C_RED, 8)
-		line(SCREEN_RECT.position + Vector2(255, 25), SCREEN_RECT.position + Vector2(40, 148), C_RED, 8)
-		if pixel_font:
-			draw_string(pixel_font, Vector2(SCREEN_RECT.position.x, SCREEN_RECT.position.y + 165), "DISCONNECTED", HORIZONTAL_ALIGNMENT_CENTER, SCREEN_RECT.size.x, 11, C_RED)
+		if blackout_t0 > 0.0:
+			rect(SCREEN_RECT.position.x, SCREEN_RECT.position.y, SCREEN_RECT.size.x, SCREEN_RECT.size.y, Color("#05070a"))
+			if pixel_font:
+				draw_string(pixel_font, Vector2(SCREEN_RECT.position.x, SCREEN_RECT.get_center().y + 5), "NO SIGNAL", HORIZONTAL_ALIGNMENT_CENTER, SCREEN_RECT.size.x, 13, Color("#5a6672"))
+		else:
+			rect(SCREEN_RECT.position.x, SCREEN_RECT.position.y, SCREEN_RECT.size.x, SCREEN_RECT.size.y, Color("#2a0606"))
+			line(SCREEN_RECT.position + Vector2(40, 25), SCREEN_RECT.position + Vector2(255, 148), C_RED, 8)
+			line(SCREEN_RECT.position + Vector2(255, 25), SCREEN_RECT.position + Vector2(40, 148), C_RED, 8)
+			if pixel_font:
+				draw_string(pixel_font, Vector2(SCREEN_RECT.position.x, SCREEN_RECT.position.y + 165), "DISCONNECTED", HORIZONTAL_ALIGNMENT_CENTER, SCREEN_RECT.size.x, 11, C_RED)
 	# his face lives around (763, 205) in the art: a rage flush + steam off the halo
 	# the blue world's grief made literal: his tears are flooding the room
 	if mood == "skycry" and cry_t0 > 0.0:
 		var el := t - cry_t0
-		var rise := clampf(el / 9.0, 0.0, 1.0) * 150.0 + clampf((el - 9.0) / 30.0, 0.0, 1.0) * 90.0
+		var rise := 648.0 * pow(clampf(el / 26.0, 0.0, 1.0), 1.25)
 		if rise > 4.0:
 			var wy := 648.0 - rise
 			var wpts := PackedVector2Array()
@@ -1095,7 +1113,7 @@ func _draw() -> void:
 				draw_snack_shape("cola", Vector2(bx, by), 0.85, sin(t * 1.3 + bi) * 0.18, 0.95)
 			# his own tear streams splash where they land
 			if rise > 40.0:
-				var splash_xs := [701.0, 803.0]
+				var splash_xs := [711.0, 793.0]
 				for sx in splash_xs:
 					circ(Vector2(sx, wy - 2.0), 4.0 + sin(t * 10.0 + sx) * 1.2, Color(0.8, 0.92, 1.0, 0.8))
 			# bubbles rising through the grief
@@ -1104,6 +1122,14 @@ func _draw() -> void:
 					var bub_x := 120.0 + bu * 170.0 + sin(t + bu) * 8.0
 					var bub_y := 648.0 - fmod(t * 26.0 + bu * 61.0, rise - 14.0)
 					circ(Vector2(bub_x, bub_y), 3.0, Color(0.8, 0.92, 1.0, 0.45))
+	# the flood reaches the PC: the lights die and smoke pours off the water
+	if mood == "skycry" and blackout_t0 > 0.0:
+		rect(0, 0, W, H, Color(0.01, 0.01, 0.03, 0.52))
+		var swy := 648.0 - 648.0 * pow(clampf((t - cry_t0) / 26.0, 0.0, 1.0), 1.25)
+		for i in range(14):
+			var cyc2 := fmod(t * 34.0 + i * 47.0, 200.0)
+			var sx := 96.0 + (i * 37) % 110 + sin(t * 1.3 + i) * 7.0
+			circ(Vector2(sx, swy - 8.0 - cyc2), 7.0 + cyc2 * 0.14, Color(0.62, 0.64, 0.68, 0.34 * (1.0 - cyc2 / 200.0)))
 	if mood == "bloodrage":
 		circ(Vector2(763, 200) + cur_head_off, 150, Color(0.9, 0.25, 0.2, 0.11))
 		for i in range(6):
@@ -1111,11 +1137,6 @@ func _draw() -> void:
 			var rise := fmod(t * 55.0 + i * 26.0, 84.0)
 			var alpha := 0.75 * (1.0 - rise / 84.0)
 			circ(Vector2(763 + side * (95 + (i % 3) * 16), 96 - rise) + cur_head_off, 13 + rise * 0.18, Color(0.92, 0.92, 0.94, alpha))
-	# tears for the meltdown, streaming from his eyes down into the beard
-	if mood == "bloodrage":
-		for side in [-1.0, 1.0]:
-			var ex: float = 763.0 + side * 46.0 + cur_head_off.x
-			line(Vector2(ex, 212 + cur_head_off.y), Vector2(ex - side * 5.0, 340 + cur_head_off.y), Color(0.45, 0.75, 1.0, 0.0), 1)
 	# tears for the meltdown, streaming from his eyes down into the beard.
 	# the anchors run through the head's own transform (neck pivot, skyward
 	# tilt, sob squash), so the streams start on his actual eyes, not on
@@ -1126,14 +1147,14 @@ func _draw() -> void:
 		var hr := -0.09 + sin(t * 1.1) * 0.012
 		var piv := Vector2(763, 332)
 		for side in [-1.0, 1.0]:
-			var art_eye := Vector2(763.0 + side * 46.0, 210.0)
+			var art_eye := Vector2(763.0 + side * 44.0, 250.0)
 			var loc := (art_eye - piv) * Vector2(1.0, sq)
 			var eye := piv + cur_head_off + loc.rotated(hr)
-			line(eye, eye + Vector2(-side * 5.0, 130.0), Color(0.45, 0.75, 1.0, 0.65), 12)
-			for k in range(3):
-				var fall := fmod(t * 210.0 + k * 48.0 + (24.0 if side > 0.0 else 0.0), 128.0)
-				circ(eye + Vector2(sin(fall * 0.11 + side) * 4.0 - side * 5.0 * fall / 128.0, 6.0 + fall), 7, Color(0.45, 0.75, 1.0, 0.95))
-			circ(eye + Vector2(-side * 5.0, 136.0), 5.0 + sin(t * 9.0 + side) * 1.0, Color(0.45, 0.75, 1.0, 0.85))
+			var fall_len := 648.0 - eye.y
+			line(eye, Vector2(eye.x - side * 5.0, 648.0), Color(0.45, 0.75, 1.0, 0.65), 12)
+			for k in range(4):
+				var fall := fmod(t * 260.0 + k * 110.0 + (55.0 if side > 0.0 else 0.0), fall_len)
+				circ(eye + Vector2(sin(fall * 0.05 + side) * 3.0 - side * 5.0 * fall / fall_len, fall), 7, Color(0.45, 0.75, 1.0, 0.95))
 	if not power_on:
 		rect(0, 0, W, H, Color(0.02, 0.03, 0.10, 0.30))
 
