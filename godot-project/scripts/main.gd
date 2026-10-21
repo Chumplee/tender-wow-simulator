@@ -823,6 +823,7 @@ func head_pos() -> Vector2:
 	return p
 
 const SCREEN_RECT := Rect2(144, 451, 295, 173) # the monitor screen inside the illustrated scene, measured from a zoomed crop
+const VID_SCREEN_SRC := Rect2(147, 452, 285, 182) # the monitor screen inside the animated clip, measured from a zoomed frame
 const HEAD_SRC := Rect2(552, 6, 474, 344) # his head and halo, a slice of the same art
 const KB_SRC := Rect2(452, 486, 140, 98) # his keyboard hand and forearm, tight to skin and keys
 const MS_SRC := Rect2(850, 478, 140, 116) # his mouse hand and forearm
@@ -834,18 +835,15 @@ func _draw() -> void:
 	if mood == "bloodrage":
 		var slam := 2.3 if fmod(t, 2.3) < 0.16 else 1.0
 		shake = Vector2(sin(t * 51.0) + sin(t * 37.0), sin(t * 45.0)) * 2.6 * slam
-	# three worlds: the living clip at idle, a blood red render for the meltdown,
-	# a dusk blue render for the sky grief; code paints what changes in each
-	var in_clip := video_mode and mood != "shock" and mood != "bloodrage" and mood != "skycry"
-	var slices_on := not in_clip
+	# the room is the still illustration again (his first, favorite idle); only the
+	# game window is alive. The graded renders still own the two big emotions.
+	var slices_on := true
 	var cur_tex: Texture2D = scene_tex
 	if mood == "shock" or mood == "bloodrage":
 		cur_tex = red_tex if red_tex else scene_tex
 	elif mood == "skycry":
 		cur_tex = dusk_tex if dusk_tex else scene_tex
-	if in_clip:
-		pass # the footage beneath is the room; overlays only
-	elif cur_tex:
+	if cur_tex:
 		draw_texture_rect(cur_tex, Rect2(shake.x, shake.y, W, H), false)
 	else:
 		rect(0, 0, W, H, C_WALL)
@@ -873,6 +871,9 @@ func _draw() -> void:
 			yy += 11.0
 		rect(299 + shake.x, 88 + shake.y, 4, covered, Color(0, 0, 0, 0.20))
 		rect(573 + shake.x, 88 + shake.y, 4, covered, Color(0, 0, 0, 0.20))
+	# his hair hangs in front of the blinds, never behind them: repaint his strip
+	if started and cur_tex:
+		draw_texture_rect_region(cur_tex, Rect2(538, 80, 47, 262), Rect2(538, 80, 47, 262))
 	# god rays for the sky grief: heaven shines on him, mockingly
 	if mood == "skycry":
 		var ra := 0.05 + 0.02 * sin(t * 2.0)
@@ -1000,6 +1001,11 @@ func _draw() -> void:
 				var mouth2 := Vector2(770, 312) + cur_head_off
 				for ci in range(5):
 					circ(mouth2 + Vector2((ci - 2) * 7.0, (ca - 1.1) * 150.0 + ci * 3.0), 2.0, Color(0.55, 0.38, 0.2, 1.0 - (ca - 1.1) / 0.5))
+		# the game window is alive: the clip plays inside the monitor, and only there
+		if power_on and wifi_on and video_mode and vid_player:
+			var vtex := vid_player.get_video_texture()
+			if vtex and vtex.get_width() > 10:
+				draw_texture_rect_region(vtex, SCREEN_RECT, VID_SCREEN_SRC)
 		if power_on and wifi_on:
 			rect(202.0 + 198.0 * boss_hp, 447, 198.0 * (1.0 - boss_hp), 9, Color(0.05, 0.02, 0.02, 0.60))
 			for f in flashes:
