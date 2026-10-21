@@ -12,7 +12,7 @@ He sits. He types. The days pass outside a window he never looks out of. Your jo
 - **Curtains** to make him hiss at the sunlight like a raccoon
 - **Poke** him, **suggest bed** (the couch is labeled BED (UNUSED)), click the router, the power strip, the window, the man himself
 
-Featuring an arcade start screen with hi-scores, a chiptune, a witness log that records your crimes, a scrolling fake-patch-notes ticker, and a full day/night cycle he sleeps through none of.
+Featuring an arcade start screen with hi-scores, a chiptune, a fully illustrated Tender who actually games (typing bursts, combat surges, a boss bar that drains), a scrolling fake-patch-notes ticker, and a full day/night cycle he sleeps through none of.
 
 There is no logout button.
 

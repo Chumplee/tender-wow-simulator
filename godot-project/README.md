@@ -37,8 +37,10 @@ raider eyes, wrist brace on the mouse hand, typing forever.
 
 Days roll past the window (a full day/night cycle every 36 seconds), the
 /played counter climbs past 19,432 hours, and every snack and every day
-adds to the trash pile in the corner. A witness log keeps the receipts and
-a fake patch-notes ticker scrolls along the bottom.
+adds to the trash pile in the corner. He actually games the whole time:
+typing bursts on the keyboard, a working mouse hand, head sway, and
+periodic combat surges with spell flashes and a draining boss bar, all
+scored by a fake patch-notes ticker scrolling along the bottom.
 
 ## Run / export
 
