@@ -62,7 +62,6 @@ var pixel_font: Font
 var scene_tex: Texture2D
 var red_tex: Texture2D
 var dusk_tex: Texture2D
-var skycry_frames: Array[Texture2D] = []
 var vid_player: VideoStreamPlayer
 var video_mode := false
 # animation life: layered slices of the illustrated scene, moved a few pixels to game with
@@ -228,12 +227,6 @@ func _ready() -> void:
 	var dt = load("res://assets/art/scene_dusk.png")
 	if dt is Texture2D:
 		dusk_tex = dt
-	for fi in range(12):
-		var fp := "res://assets/anim_skycry/f%02d.jpg" % fi
-		if ResourceLoader.exists(fp):
-			var ft = load(fp)
-			if ft is Texture2D:
-				skycry_frames.append(ft)
 
 	_build_audio()
 	_build_video()
@@ -869,6 +862,151 @@ func draw_snack_shape(kind: String, center: Vector2, sc: float, rot: float, alph
 			rect(-26 * sc, 8 * sc, 52 * sc, 10 * sc, Color(0.93, 0.68, 0.38, alpha))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
+# ============ THE BLUE WORLD STAGE ============
+# A brand new full-body cartoon of him, drawn fresh for this state alone and
+# performed by pose keyframes: realization, the arms-to-the-sky scream, the
+# collapse into desk sobs, the shuddering breath, forever. Nothing here reuses
+# the illustration, the slices, or the gaming footage.
+func sample_pose(cyc: float) -> Array:
+	var keys := [
+		[0.0, 70.0, 110.0, 15.0, 15.0, 0.0, 0.0, 0.0, 0.2, 0.3],
+		[0.8, 70.0, 110.0, 15.0, 15.0, -0.03, -2.0, 0.0, 0.45, 0.5],
+		[1.15, 235.0, -55.0, -12.0, -12.0, -0.30, -12.0, -8.0, 1.0, 1.0],
+		[1.9, 232.0, -52.0, -10.0, -10.0, -0.28, -11.0, -8.0, 1.0, 1.0],
+		[2.3, 150.0, 30.0, 0.0, 0.0, -0.10, -4.0, -2.0, 0.5, 0.8],
+		[2.8, 62.0, 118.0, 28.0, 28.0, 0.34, 16.0, 2.0, 0.1, 0.7],
+		[4.4, 62.0, 118.0, 28.0, 28.0, 0.38, 18.0, 2.0, 0.05, 0.7],
+		[4.9, 66.0, 114.0, 20.0, 20.0, 0.10, 6.0, 0.0, 0.3, 0.5],
+	]
+	for i in range(keys.size()):
+		var a: Array = keys[i]
+		var b: Array = keys[(i + 1) % keys.size()]
+		var t0: float = a[0]
+		var t1: float = b[0]
+		if i == keys.size() - 1:
+			t1 += 5.2
+		var cc := cyc
+		if cc < t0:
+			cc += 5.2
+		if cc >= t0 and cc <= t1:
+			var k := (cc - t0) / maxf(t1 - t0, 0.001)
+			k = k * k * (3.0 - 2.0 * k)
+			var out: Array = []
+			for j in range(1, 10):
+				out.append(lerpf(float(a[j]), float(b[j]), k))
+			return out
+	return [70.0, 110.0, 15.0, 15.0, 0.0, 0.0, 0.0, 0.2, 0.3]
+
+func draw_stage_arm(shoulder: Vector2, ang_deg: float, bend_deg: float) -> void:
+	var a := deg_to_rad(ang_deg)
+	var b := deg_to_rad(ang_deg + bend_deg)
+	var elbow := shoulder + Vector2(cos(a), sin(a)) * 78.0
+	var wrist := elbow + Vector2(cos(b), sin(b)) * 70.0
+	line(shoulder, elbow, Color("#5c6050"), 50)
+	line(elbow, wrist, Color("#eab98d"), 36)
+	line(elbow.lerp(wrist, 0.60), elbow.lerp(wrist, 0.86), Color("#26262c"), 40)
+	circ(wrist, 18, Color("#eab98d"))
+
+func draw_skycry_stage() -> void:
+	var el := t - cry_t0 if cry_t0 > 0.0 else t
+	var cyc := fmod(maxf(el, 0.0), 5.2)
+	var pose := sample_pose(cyc)
+	var armL: float = pose[0]
+	var armR: float = pose[1]
+	var bendL: float = pose[2]
+	var bendR: float = pose[3]
+	var hrot: float = pose[4]
+	var hdy: float = pose[5]
+	var mouth: float = pose[7]
+	var tears: float = pose[8]
+	var heave := 0.0
+	if cyc > 2.8 and cyc < 4.4:
+		heave = sin((cyc - 2.8) * 14.0) * 2.0
+	var tdy: float = pose[6] + heave
+	hdy += heave * 0.7
+	# --- the room: storm walls, a rain window, a skyline drowning in weather ---
+	rect(0, 0, W, H, Color("#16283f"))
+	rect(0, 470, W, 178, Color("#101d30"))
+	rect(86, 64, 264, 220, Color("#0a141f"))
+	rect(96, 74, 244, 200, Color("#5f7ea6"))
+	rect(96, 74, 244, 90, Color("#7492b5"))
+	for bx in range(5):
+		var bh: float = [46.0, 70.0, 34.0, 84.0, 54.0][bx]
+		rect(106.0 + bx * 46.0, 274.0 - bh, 34, bh, Color("#22344d"))
+	for ri in range(14):
+		var rx := 108.0 + ri * 16.0
+		var ry := 82.0 + fmod(t * 250.0 + ri * 41.0, 180.0)
+		line(Vector2(rx, ry), Vector2(rx - 5, ry + 13), Color(0.85, 0.92, 1.0, 0.45), 2)
+	if (cyc > 0.5 and cyc < 0.58) or (cyc > 0.66 and cyc < 0.72):
+		rect(96, 74, 244, 200, Color(0.9, 0.95, 1.0, 0.5))
+		rect(0, 0, W, H, Color(0.9, 0.95, 1.0, 0.05))
+	# gaming chair behind him
+	draw_colored_polygon(ellipse_pts(Vector2(720, 318), 138, 96), Color("#0e2036"))
+	rect(606, 318, 228, 130, Color("#0e2036"))
+	# --- torso ---
+	draw_colored_polygon(ellipse_pts(Vector2(720, 484 + tdy), 190, 152), Color("#23231f"))
+	draw_colored_polygon(ellipse_pts(Vector2(720, 480 + tdy), 185, 148), Color("#686c5c"))
+	draw_colored_polygon(ellipse_pts(Vector2(720, 520 + tdy), 130, 92), Color("#71755f"))
+	# --- head on its neck pivot ---
+	var neck := Vector2(720, 340 + tdy)
+	var jx := 0.0
+	if mouth > 0.85:
+		jx = sin(t * 47.0) * 1.6
+	draw_set_transform(neck + Vector2(jx, hdy), hrot, Vector2.ONE)
+	circ(Vector2(0, -118), 106, Color("#2e1f16"))
+	for ci in range(11):
+		var ca := TAU * float(ci) / 11.0 + 0.3
+		circ(Vector2(cos(ca) * 88.0, -118 + sin(ca) * 84.0), 36.0, Color("#2e1f16"))
+	for ci in range(11):
+		var ca2 := TAU * float(ci) / 11.0 + 0.55
+		circ(Vector2(cos(ca2) * 80.0, -118 + sin(ca2) * 76.0), 30.0, Color("#3a2718"))
+	circ(Vector2(0, -112), 74, Color("#eab98d"))
+	for bi in range(7):
+		var ba := PI * (0.15 + 0.7 * float(bi) / 6.0)
+		circ(Vector2(cos(ba) * 52.0, -112 + sin(ba) * 56.0), 30.0, Color("#33241a"))
+	circ(Vector2(0, -56), 50, Color("#33241a"))
+	circ(Vector2(0, -72), 54, Color("#3a2718"))
+	line(Vector2(-44, -146), Vector2(-14, -154), Color("#241a12"), 7)
+	line(Vector2(44, -146), Vector2(14, -154), Color("#241a12"), 7)
+	if mouth > 0.8:
+		line(Vector2(-40, -126), Vector2(-14, -118), Color("#241a12"), 6)
+		line(Vector2(40, -126), Vector2(14, -118), Color("#241a12"), 6)
+	elif hrot > 0.2:
+		line(Vector2(-40, -120), Vector2(-14, -116), Color("#241a12"), 5)
+		line(Vector2(40, -120), Vector2(14, -116), Color("#241a12"), 5)
+	else:
+		circ(Vector2(-27, -122), 15, Color.WHITE)
+		circ(Vector2(27, -122), 15, Color.WHITE)
+		circ(Vector2(-27, -127), 5.5, Color("#1c2733"))
+		circ(Vector2(27, -127), 5.5, Color("#1c2733"))
+	line(Vector2(1, -102), Vector2(5, -93), Color("#c98f5f"), 4)
+	if tears > 0.05:
+		for side in [-1.0, 1.0]:
+			var ex2: float = side * 27.0
+			line(Vector2(ex2, -104), Vector2(ex2 + side * 3.0, -104 + 66.0 * tears), Color(0.55, 0.8, 1.0, 0.75), 7)
+			for k in range(2):
+				var fall := fmod(t * 200.0 + k * 40.0 + (20.0 if side > 0.0 else 0.0), 62.0 * tears + 1.0)
+				circ(Vector2(ex2, -100 + fall), 4.5, Color(0.55, 0.8, 1.0, 0.9))
+	if mouth > 0.05:
+		draw_colored_polygon(ellipse_pts(Vector2(0, -52), 8.0 + 8.0 * mouth, 3.0 + 17.0 * mouth, 16), Color("#170d0a"))
+		if mouth > 0.6:
+			draw_colored_polygon(ellipse_pts(Vector2(0, -40), 8.0, 5.0, 12), Color("#8e3b31"))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	# --- desk, dead monitor, keyboard ---
+	rect(400, 512, 640, 136, Color("#2e2119"))
+	rect(400, 512, 640, 14, Color("#4a3826"))
+	rect(118, 384, 254, 162, Color("#0c0e11"))
+	rect(130, 396, 230, 126, Color("#2a0606"))
+	line(Vector2(160, 414), Vector2(330, 504), C_RED, 7)
+	line(Vector2(330, 414), Vector2(160, 504), C_RED, 7)
+	if pixel_font:
+		draw_string(pixel_font, Vector2(130, 540), "DISCONNECTED", HORIZONTAL_ALIGNMENT_CENTER, 230, 9, C_RED)
+	rect(618, 530, 204, 15, Color("#17181d"))
+	rect(618, 530, 204, 4, Color("#26282f"))
+	# --- arms last, over everything: on the desk, or thrown at the sky ---
+	draw_stage_arm(Vector2(566, 436 + tdy), armL, bendL)
+	draw_stage_arm(Vector2(874, 436 + tdy), armR, bendR)
+
 func _draw() -> void:
 	var phase := day_clock / DAY_LENGTH
 	# bloodrage shakes the whole world; slam beats hit every couple of seconds
@@ -878,28 +1016,17 @@ func _draw() -> void:
 		shake = Vector2(sin(t * 51.0) + sin(t * 37.0), sin(t * 45.0)) * 2.6 * slam
 	# the room is the still illustration again (his first, favorite idle); only the
 	# game window is alive. The graded renders still own the two big emotions.
-	var clip_world := mood == "skycry" and skycry_frames.size() > 0
-	var slices_on := not clip_world
+	var stage_world := mood == "skycry"
+	var slices_on := not stage_world
 	var cur_tex: Texture2D = scene_tex
 	if mood == "shock" or mood == "bloodrage":
 		cur_tex = red_tex if red_tex else scene_tex
-	elif mood == "skycry":
-		cur_tex = dusk_tex if dusk_tex else scene_tex
-	if clip_world:
-		# the blue world's own filmstrip: a 12-frame cutout freak-out, his alone
-		var fel := t - cry_t0 if cry_t0 > 0.0 else t
-		var fidx := int(fmod(maxf(fel, 0.0), 1.2) / 0.1) % skycry_frames.size()
-		draw_texture_rect(skycry_frames[fidx], Rect2(0, 0, W, H), false)
+	if stage_world:
+		draw_skycry_stage()
 	elif cur_tex:
 		draw_texture_rect(cur_tex, Rect2(shake.x, shake.y, W, H), false)
 	else:
 		rect(0, 0, W, H, C_WALL)
-	# lightning cracks over the window just before each wail
-	if mood == "skycry" and cry_t0 > 0.0 and not clip_world:
-		var lcyc := fmod(t - cry_t0, 4.6)
-		if (lcyc > 2.9 and lcyc < 3.0) or (lcyc > 3.15 and lcyc < 3.24):
-			rect(300, 85, 268, 143, Color(0.85, 0.92, 1.0, 0.45))
-			rect(0, 0, W, H, Color(0.85, 0.92, 1.0, 0.06))
 	if mood == "bloodrage":
 		rect(0, 0, W, H, Color(0.55, 0.04, 0.02, 0.10 + 0.05 * sin(t * 9.0)))
 		rect(0, 0, W, 30, Color(0.5, 0.02, 0.01, 0.16))
@@ -910,13 +1037,13 @@ func _draw() -> void:
 		rect(0, 0, W, H, Color(0.01, 0.01, 0.04, 0.80))
 		return
 	# ---- the blinds live again: a sunbeam when they are up, slats that slide over the art's window ----
-	if blinds_anim < 0.35 and power_on and phase < 0.70 and not clip_world:
+	if blinds_anim < 0.35 and power_on and phase < 0.70 and not stage_world:
 		var beam_a := 0.055 * (1.0 - blinds_anim / 0.35)
 		if mood == "hiss":
 			beam_a = 0.13
 		draw_colored_polygon(PackedVector2Array([Vector2(310, 228), Vector2(560, 228), Vector2(770, 480), Vector2(430, 480)]), Color(1.0, 0.95, 0.75, beam_a))
 	# slats fitted to the measured glass: x 300..568, y 85..228
-	if blinds_anim > 0.01 and not clip_world:
+	if blinds_anim > 0.01 and not stage_world:
 		var covered := 143.0 * blinds_anim
 		var yy := 85.0
 		while yy < 85.0 + covered:
@@ -925,17 +1052,6 @@ func _draw() -> void:
 			yy += 11.0
 		rect(304 + shake.x, 85 + shake.y, 3, covered, Color(0, 0, 0, 0.20))
 		rect(561 + shake.x, 85 + shake.y, 3, covered, Color(0, 0, 0, 0.20))
-	# god rays for the sky grief: heaven shines on him, mockingly
-	if mood == "skycry" and not clip_world:
-		var ra := 0.05 + 0.02 * sin(t * 2.0)
-		for gi in range(3):
-			var gx := 350.0 + gi * 90.0
-			draw_colored_polygon(PackedVector2Array([Vector2(gx, 92), Vector2(gx + 34, 92), Vector2(763 + (gi - 1) * 42, 235), Vector2(763 + (gi - 1) * 42 - 26, 235)]), Color(1.0, 0.98, 0.9, ra))
-	# a grief puddle gathers on the desk while he weeps
-	if mood == "skycry" and cry_t0 > 0.0 and not clip_world:
-		var pw := minf(30.0 + (t - cry_t0) * 6.0, 95.0)
-		draw_colored_polygon(ellipse_pts(Vector2(763 + cur_head_off.x, 608), pw, pw * 0.16), Color(0.45, 0.72, 1.0, 0.45))
-
 	# ---- he is actually gaming now: slices of the same art, shifted a few pixels ----
 	var surge := power_on and wifi_on and mood == "focused" and t < surge_until
 	cur_head_off = Vector2(sin(t * 0.9) * 1.2, sin(t * 1.3) * 1.5)
@@ -1079,14 +1195,14 @@ func _draw() -> void:
 			rect(190, 606, 220 * cast_f, 5, Color(1.0, 0.8, 0.3, 0.8))
 	# night settles over the room
 	var nf := night_factor(phase)
-	if nf > 0.02 and power_on:
+	if nf > 0.02 and power_on and mood != "skycry":
 		rect(0, 0, W, H, Color(0.03, 0.05, 0.16, 0.30 * nf))
 	# monitor states painted over the art's screen
 	if not power_on:
 		rect(SCREEN_RECT.position.x + shake.x, SCREEN_RECT.position.y + shake.y, SCREEN_RECT.size.x, SCREEN_RECT.size.y, Color("#05070a"))
 		if pixel_font:
 			draw_string(pixel_font, Vector2(SCREEN_RECT.position.x + shake.x, SCREEN_RECT.get_center().y + 5 + shake.y), "NO SIGNAL", HORIZONTAL_ALIGNMENT_CENTER, SCREEN_RECT.size.x, 13, Color("#5a6672"))
-	elif not wifi_on and not clip_world:
+	elif not wifi_on and not stage_world:
 		rect(SCREEN_RECT.position.x, SCREEN_RECT.position.y, SCREEN_RECT.size.x, SCREEN_RECT.size.y, Color("#2a0606"))
 		line(SCREEN_RECT.position + Vector2(40, 25), SCREEN_RECT.position + Vector2(255, 148), C_RED, 8)
 		line(SCREEN_RECT.position + Vector2(255, 25), SCREEN_RECT.position + Vector2(40, 148), C_RED, 8)
@@ -1114,7 +1230,7 @@ func _draw() -> void:
 				draw_snack_shape("cola", Vector2(bx, by), 0.85, sin(t * 1.3 + bi) * 0.18, 0.95)
 			# his own tear streams splash where they land
 			if rise > 40.0:
-				var splash_xs := [500.0, 640.0] if clip_world else [717.0, 809.0]
+				var splash_xs := [675.0, 765.0]
 				for sx in splash_xs:
 					circ(Vector2(sx, wy - 2.0), 4.0 + sin(t * 10.0 + sx) * 1.2, Color(0.8, 0.92, 1.0, 0.8))
 			# bubbles rising through the grief
@@ -1131,14 +1247,10 @@ func _draw() -> void:
 			var alpha := 0.75 * (1.0 - rise / 84.0)
 			circ(Vector2(763 + side * (95 + (i % 3) * 16), 96 - rise) + cur_head_off, 13 + rise * 0.18, Color(0.92, 0.92, 0.94, alpha))
 	# tears for the meltdown, streaming from his eyes down into the beard
-	if mood == "skycry" and not clip_world:
+	if mood == "bloodrage":
 		for side in [-1.0, 1.0]:
 			var ex: float = 763.0 + side * 46.0 + cur_head_off.x
-			line(Vector2(ex, 212 + cur_head_off.y), Vector2(ex - side * 5.0, 340 + cur_head_off.y), Color(0.45, 0.75, 1.0, 0.65), 12)
-			for k in range(3):
-				var fall := fmod(t * 210.0 + k * 48.0 + (24.0 if side > 0.0 else 0.0), 128.0)
-				circ(Vector2(ex + sin(fall * 0.11 + side) * 4.0, 218 + fall + cur_head_off.y), 7, Color(0.45, 0.75, 1.0, 0.95))
-			circ(Vector2(ex - side * 5.0, 346 + cur_head_off.y), 5.0 + sin(t * 9.0 + side) * 1.0, Color(0.45, 0.75, 1.0, 0.85))
+			line(Vector2(ex, 212 + cur_head_off.y), Vector2(ex - side * 5.0, 340 + cur_head_off.y), Color(0.45, 0.75, 1.0, 0.0), 1)
 	if not power_on:
 		rect(0, 0, W, H, Color(0.02, 0.03, 0.10, 0.30))
 

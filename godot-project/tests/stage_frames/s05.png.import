@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://buegniyrnedgl"
-path="res://.godot/imported/f01.jpg-367ba7965d67ad1184bcbed85a7bf7a2.ctex"
+uid="uid://cw5d73clppplb"
+path="res://.godot/imported/s05.png-eed28fc1bd7bcf8c8620dbd1550961de.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/anim_skycry/f01.jpg"
-dest_files=["res://.godot/imported/f01.jpg-367ba7965d67ad1184bcbed85a7bf7a2.ctex"]
+source_file="res://tests/stage_frames/s05.png"
+dest_files=["res://.godot/imported/s05.png-eed28fc1bd7bcf8c8620dbd1550961de.ctex"]
 
 [params]
 
