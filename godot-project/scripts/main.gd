@@ -105,6 +105,7 @@ var curtain_btn: Button
 var coin_label: Label
 var start_layer: CanvasLayer
 var music_player: AudioStreamPlayer
+var menu_player: AudioStreamPlayer
 var sfx_player: AudioStreamPlayer
 var streams := {}
 
@@ -263,6 +264,15 @@ func _build_audio() -> void:
 	music_player = AudioStreamPlayer.new()
 	music_player.volume_db = -9.0
 	add_child(music_player)
+	# the start menu song: his own track, untouched, if the file is present
+	menu_player = AudioStreamPlayer.new()
+	menu_player.volume_db = -7.0
+	add_child(menu_player)
+	if ResourceLoader.exists("res://assets/audio/fat_menu.mp3"):
+		var ms = load("res://assets/audio/fat_menu.mp3")
+		if ms is AudioStreamMP3:
+			(ms as AudioStreamMP3).loop = true
+			menu_player.stream = ms
 	sfx_player = AudioStreamPlayer.new()
 	sfx_player.volume_db = -4.0
 	add_child(sfx_player)
@@ -456,6 +466,8 @@ func start_game() -> void:
 		return
 	started = true
 	play_sfx("click")
+	if menu_player:
+		menu_player.stop()
 	start_layer.visible = false
 	if streams.has("theme") and not muted:
 		music_player.play()
@@ -716,6 +728,10 @@ func _process(delta: float) -> void:
 	var b_target := 0.0 if blinds_open else 1.0
 	blinds_anim = move_toward(blinds_anim, b_target, delta * (4.0 if mood == "hiss" else 1.6))
 
+	# the menu song keeps asking to play until the browser lets it (audio
+	# unlocks on the first tap); it shuts up the moment the game starts
+	if not started and menu_player and menu_player.stream and not muted and not menu_player.playing:
+		menu_player.play()
 	# the footage runs only the monitor; the big emotions hide it entirely
 	if vid_player:
 		var show_clip := mood != "shock" and mood != "bloodrage" and mood != "skycry"
